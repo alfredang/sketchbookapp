@@ -197,15 +197,24 @@ struct EditorView: View {
     @ViewBuilder
     private func layerView(idx: Int, layer: Layer, size: CGSize) -> some View {
         if idx == vm.activeIndex && !layer.isReference {
-            CanvasView(drawing: Binding(get: { vm.activeDrawing }, set: { vm.activeDrawing = $0 }),
-                       tool: vm.currentTool,
-                       isRulerActive: vm.isRulerActive,
-                       pencilOnly: vm.pencilOnly,
-                       symmetry: vm.symmetry,
-                       canvasSize: size,
-                       isLocked: layer.isLocked || vm.toolMode == .fill)
-                .frame(width: size.width, height: size.height)
-                .opacity(layer.opacity)
+            ZStack {
+                // Raster contents of the active layer (fills, filters, imported art)
+                // render beneath the live PencilKit canvas.
+                if let image = layer.image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .frame(width: size.width, height: size.height)
+                }
+                CanvasView(drawing: Binding(get: { vm.activeDrawing }, set: { vm.activeDrawing = $0 }),
+                           tool: vm.currentTool,
+                           isRulerActive: vm.isRulerActive,
+                           pencilOnly: vm.pencilOnly,
+                           symmetry: vm.symmetry,
+                           canvasSize: size,
+                           isLocked: layer.isLocked || vm.toolMode == .fill)
+                    .frame(width: size.width, height: size.height)
+            }
+            .opacity(layer.opacity)
         } else {
             Image(uiImage: LayerCompositor.renderLayer(layer, size: size))
                 .resizable()

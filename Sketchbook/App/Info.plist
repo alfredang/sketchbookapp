@@ -5,7 +5,11 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>Sketchbook</string>
+    <string>Sketchbook Studio</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -40,18 +44,6 @@
     <string>Import a reference photo to trace and overlay while you sketch.</string>
     <key>NSCameraUsageDescription</key>
     <string>Place your finished sketch into the real world as an AR effect using the camera.</string>
-    <key>NSUbiquitousContainers</key>
-    <dict>
-        <key>iCloud.com.tertiaryinfotech.sketchbookapp</key>
-        <dict>
-            <key>NSUbiquitousContainerIsDocumentScopePublic</key>
-            <true/>
-            <key>NSUbiquitousContainerName</key>
-            <string>Sketchbook</string>
-            <key>NSUbiquitousContainerSupportedFolderLevels</key>
-            <string>Any</string>
-        </dict>
-    </dict>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>

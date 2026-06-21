@@ -52,7 +52,12 @@ struct GalleryView: View {
                 EditorView(document: doc)
                     .environmentObject(store)
             }
-            .task { await store.reload() }
+            .task {
+                await store.reload()
+                if ProcessInfo.processInfo.environment["SKETCH_OPEN"] == "1" {
+                    openSketch = store.documents.first
+                }
+            }
         }
     }
 

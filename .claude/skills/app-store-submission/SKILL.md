@@ -301,6 +301,22 @@ review the Development→Production diff and **Deploy**.
 - **Device not registered / iCloud container mismatch** when test-installing on hardware →
   register the device UDID in the portal and ensure the iCloud container is created and
   assigned to the App ID.
+- **`exportArchive` → "Cloud signing permission error" / "No profiles for '<bundle id>' were
+  found".** A team **API key** (e.g. an org "CI Upload" key) often lacks the entitlement to mint a
+  cloud-managed *distribution* profile, so `-allowProvisioningUpdates` automatic export fails even
+  though the **archive** itself succeeded. Fix without the portal: create an App Store profile via
+  the API and export with **manual** signing.
+  1. `GET /v1/certificates?filter[certificateType]=DISTRIBUTION` → pick your "Apple Distribution"
+     cert id(s). (If unsure which matches your local private key, include *all* of them in the
+     profile — a profile may reference multiple certs.)
+  2. `POST /v1/profiles` `{attributes:{name, profileType:"IOS_APP_STORE"}, relationships:{bundleId:{data:{type:"bundleIds",id:<id>}}, certificates:{data:[{type:"certificates",id:<certid>}]}}}`.
+     (Register the bundle id first if needed: `POST /v1/bundleIds` with `seedId`=Team ID — the API
+     *can* do this even though it can't create the app record.)
+  3. Decode the returned `profileContent` (base64) to
+     `~/Library/MobileDevice/Provisioning Profiles/<uuid>.mobileprovision`.
+  4. `ExportOptions.plist`: `signingStyle=manual`, `signingCertificate="Apple Distribution: <Name>
+     (<TEAM>)"`, `provisioningProfiles = { <bundle id> : "<profile name>" }`, then
+     `xcodebuild -exportArchive` (no `-allowProvisioningUpdates` needed). `altool` upload then works.
 - **JWT lifetime** ≤ 20 min (`exp = iat + 1200`), `aud = "appstoreconnect-v1"`, ES256.
   Regenerate per script run; don't cache.
 - **Empty draft review submissions** created during testing can't be deleted via API (403).
@@ -308,12 +324,28 @@ review the Development→Production diff and **Deploy**.
 - **Replacing screenshots = DELETE then upload** (the API *appends*). To swap a bad set, first
   `GET /v1/appScreenshotSets/{setid}/appScreenshots`, `DELETE /v1/appScreenshots/{id}` each,
   then run the 3-step upload. Otherwise you end up with 6 screenshots (3 stale + 3 new).
+- **`set-metadata` does NOT set the listing copy or category — submit will block without them.**
+  It only writes copyright / `privacyPolicyUrl` / support+marketing URLs. You must also set, on the
+  right resource (mixing these up returns 409 *"unknown attribute"*):
+  - **`description` + `keywords` + `promotionalText`** → `PATCH /v1/appStoreVersionLocalizations/{id}`
+    (description & keywords are **required** for submission).
+  - **`subtitle`** → `PATCH /v1/appInfoLocalizations/{id}` (it lives on **appInfo**, *not* the version
+    localization — patching it on the version localization 409s).
+  - **Primary/secondary category** → `PATCH /v1/appInfos/{id}` `relationships.primaryCategory` →
+    `{type:"appCategories", id:"EDUCATION"}` (a missing category blocks submission).
 - **Resubmitting a REJECTED version → `STATE_ERROR.ITEM_PART_OF_ANOTHER_SUBMISSION`.** The
   rejected `reviewSubmission` still "holds" the version. Free it with
   `PATCH /v1/reviewSubmissions/{id}` `{"canceled": true}`, then create a fresh submission, add
   the version as a `reviewSubmissionItem`, and `PATCH submitted=true`. A stray *empty*
   submission left over from a failed attempt may 409 on cancel — just **reuse** it (add the
   item + submit it) instead of creating another.
+- **Swapping the build on a version that's still `WAITING_FOR_REVIEW` (not yet released).** A version
+  in review is locked, so `attach-build` is rejected. Cancel the in-flight submission first
+  (`PATCH /v1/reviewSubmissions/{id}` `{"canceled": true}`) — this returns the version to
+  **`DEVELOPER_REJECTED`**, which is *editable* (do **not** wait for `PREPARE_FOR_SUBMISSION`; it
+  won't go back there). Then upload the new build (bump `CFBundleVersion`; marketing version can stay
+  the same since 1.0 was never released), `attach-build --build <n>`, and `submit` (creates a fresh
+  `reviewSubmission`). Note this sends the app to the **back of the review queue**.
 - **Attach a reviewer screen recording via the API** (works even while `WAITING_FOR_REVIEW`):
   3-step like screenshots — `POST /v1/appStoreReviewAttachments` (attrs `fileName`+`fileSize`,
   relationship → `appStoreReviewDetails/{id}`) → PUT bytes to `uploadOperations` → `PATCH`

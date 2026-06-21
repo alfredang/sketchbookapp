@@ -26,6 +26,13 @@ BASE = "https://api.appstoreconnect.apple.com"
 EDITABLE = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED",
             "METADATA_REJECTED", "INVALID_BINARY", "WAITING_FOR_REVIEW"}
 
+# Once a version has reached the store (approved / live / pending release), the next
+# release must ship a NEW version number. Any other state means the latest version is
+# still pending (draft, in/awaiting review, rejected) and CI overwrites it in place.
+RELEASED = {"READY_FOR_SALE", "PENDING_DEVELOPER_RELEASE", "PENDING_APPLE_RELEASE",
+            "REPLACED_WITH_NEW_VERSION", "REMOVED_FROM_SALE",
+            "PROCESSING_FOR_APP_STORE", "PENDING_CONTRACT", "PREORDER_READY_FOR_SALE"}
+
 
 def b64url(b):
     return base64.urlsafe_b64encode(b).rstrip(b"=")
@@ -98,25 +105,10 @@ def bump(s):
     return ".".join(parts)
 
 
-def project_marketing_version():
-    """The developer-controlled marketing version — the source of truth for what to ship.
-    Read from project.yml (XcodeGen)."""
-    try:
-        for line in open("project.yml"):
-            m = re.search(r'MARKETING_VERSION:\s*"?([0-9]+(?:\.[0-9]+)*)"?', line)
-            if m:
-                return m.group(1)
-    except OSError:
-        pass
-    return None
-
-
 def cmd_next_version(_):
-    # Prefer the version the developer set in the project — CI ships exactly that, and
-    # ensure_version() reconciles App Store Connect to it (create, or rename a pending one).
-    pv = project_marketing_version()
-    if pv:
-        print(pv); return
+    # Decide the next version by checking the CURRENT (latest) version's App Store state:
+    #   live / released  -> ship the NEXT version   (e.g. 1.0 -> 1.1)
+    #   still pending / under review / rejected -> reuse the SAME number and overwrite it
     tok = token(); aid = app_id(tok)
     vs = versions(tok, aid)
     if not vs:
@@ -124,7 +116,7 @@ def cmd_next_version(_):
     latest = max(vs, key=lambda v: vkey(v["attributes"]["versionString"]))
     state = latest["attributes"]["appStoreState"]
     vstr = latest["attributes"]["versionString"]
-    print(vstr if state in EDITABLE else bump(vstr))
+    print(bump(vstr) if state in RELEASED else vstr)
 
 
 def cmd_wait_build(a):
@@ -247,6 +239,13 @@ def upload_screenshots(tok, vid, directory):
                               "attributes": {"screenshotDisplayType": "APP_IPHONE_67"},
                               "relationships": {"appStoreVersionLocalization": {"data": {"type": "appStoreVersionLocalizations", "id": lid}}}}}, tok)
         set_id = json.loads(b)["data"]["id"]
+    else:
+        # Replace semantics: clear any existing shots in the set first.
+        s, existing = jget("GET", f"/v1/appScreenshotSets/{set_id}/appScreenshots", tok)
+        for sh in existing.get("data", []):
+            call("DELETE", f"/v1/appScreenshots/{sh['id']}", tok=tok)
+        if existing.get("data"):
+            print(f"  cleared {len(existing['data'])} old screenshot(s)", flush=True)
     for name in sorted(os.listdir(directory)):
         path = os.path.join(directory, name)
         data = open(path, "rb").read()
@@ -256,8 +255,14 @@ def upload_screenshots(tok, vid, directory):
                               "relationships": {"appScreenshotSet": {"data": {"type": "appScreenshotSets", "id": set_id}}}}}, tok)
         d = json.loads(b)["data"]
         for op in d["attributes"]["uploadOperations"]:
+            # Upload to Apple's object storage with ONLY the operation's headers —
+            # adding the ASC bearer token makes the PUT fail (asset stays AWAITING_UPLOAD).
             hdr = {h["name"]: h["value"] for h in op["requestHeaders"]}
-            call(op["method"], op["url"], raw=data[op["offset"]:op["offset"] + op["length"]], tok=tok, headers=hdr)
+            req = urllib.request.Request(op["url"], data=data[op["offset"]:op["offset"] + op["length"]],
+                                         method=op["method"], headers=hdr)
+            with urllib.request.urlopen(req) as r:
+                if r.status >= 300:
+                    sys.exit(f"screenshot upload PUT failed: {r.status}")
         call("PATCH", f"/v1/appScreenshots/{d['id']}",
              {"data": {"type": "appScreenshots", "id": d["id"],
                        "attributes": {"uploaded": True, "sourceFileChecksum": hashlib.md5(data).hexdigest()}}}, tok)
@@ -365,6 +370,25 @@ def cmd_submit(a):
     submit_for_review(tok, aid, vid)
 
 
+def cmd_replace_screenshots(a):
+    """Swap the screenshots on an existing (pending) version and re-submit for review.
+    Cancels the active review first so the version is editable."""
+    tok = token(); aid = app_id(tok)
+    vid = next((v["id"] for v in versions(tok, aid)
+                if v["attributes"]["versionString"] == a.version), None)
+    if not vid:
+        sys.exit(f"version {a.version} not found")
+    cancel_active(tok, aid)
+    for _ in range(8):                       # the cancel briefly locks the version
+        s, _b = jget("GET", f"/v1/appStoreVersions/{vid}", tok)
+        if s < 300:
+            break
+        time.sleep(5)
+    upload_screenshots(tok, vid, a.dir)
+    if not a.no_submit:
+        submit_for_review(tok, aid, vid)
+
+
 def main():
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -375,6 +399,11 @@ def main():
     s.add_argument("--build", required=True)
     s.add_argument("--screenshots-dir", default="ci/screenshots/APP_IPHONE_67")
     s.set_defaults(func=cmd_submit)
+    rs = sub.add_parser("replace-screenshots")
+    rs.add_argument("--version", required=True)
+    rs.add_argument("--dir", default="ci/screenshots/APP_IPHONE_67")
+    rs.add_argument("--no-submit", action="store_true")
+    rs.set_defaults(func=cmd_replace_screenshots)
     a = p.parse_args()
     a.func(a)
 

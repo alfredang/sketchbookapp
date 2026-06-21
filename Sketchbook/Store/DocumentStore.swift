@@ -57,6 +57,11 @@ final class DocumentStore: ObservableObject {
             }
         }
         loaded.sort { $0.modifiedAt > $1.modifiedAt }
+        // Screenshot-only sample seeding (gated by SKETCH_SEED env; no-op in production).
+        if loaded.isEmpty && SampleArt.seedRequested {
+            for s in SampleArt.makeSamples() { loaded.append(save(s)) }
+            loaded.sort { $0.modifiedAt > $1.modifiedAt }
+        }
         self.documents = loaded
     }
 

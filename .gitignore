@@ -36,3 +36,10 @@ fastlane/Preview.html
 .env
 secrets/
 AuthKey_*.p8
+
+# Screenshot captures & Playwright artifacts
+shots/
+.playwright-mcp/
+*.xcarchive
+__pycache__/
+*.pyc
