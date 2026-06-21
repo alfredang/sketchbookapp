@@ -1,0 +1,38 @@
+# Xcode / Swift
+DerivedData/
+build/
+*.xcuserstate
+*.xcuserdatad
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# XcodeGen generates this; source of truth is project.yml
+Sketchbook.xcodeproj/
+
+# macOS
+.DS_Store
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# CocoaPods / Carthage (unused, future-proof)
+Pods/
+Carthage/Build/
+
+# Fastlane / secrets
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+fastlane/report.xml
+fastlane/Preview.html
+.env
+secrets/
+AuthKey_*.p8
