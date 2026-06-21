@@ -15,18 +15,23 @@ A natural drawing studio for **iPad** — sketch with pressure-sensitive brushes
 
 | Feature | How it works |
 |---------|--------------|
-| ✏️ **Brushes** | Pen, Pencil, Marker, Crayon, Fountain, Monoline, Watercolor — backed by PencilKit ink types |
-| 📏 **Brush size & color** | Live width slider (1–60pt) and a full-spectrum color picker with opacity |
+| ✏️ **Brushes** | Pen, Pencil, Marker, Crayon, Fountain, Monoline, Watercolor — with live stroke previews |
+| ✒️ **Pencil grades** | Graphite 2H · H · HB · 2B · 4B · 6B (darkness + width) |
+| 📏 **Adjustable size** | Brush & eraser size sliders; full-spectrum color picker with opacity |
 | 🪣 **Color fill** | Scanline flood-fill bucket — tap any enclosed region |
-| 🧽 **Eraser** | Bitmap eraser tool |
-| 🎨 **Filter effects** | Mono, Sepia, Vibrant, Invert, Comic, Soft Blur (Core Image) |
-| 🗂️ **Layers** | Add / duplicate / reorder / lock / hide, per-layer opacity |
-| 📐 **Ruler** | Native PencilKit ruler for straight lines |
+| 🧽 **Eraser** | Bitmap eraser with adjustable size |
+| 🪢 **Lasso** | Select, move, cut & duplicate strokes |
+| ↩️ **Undo / Redo** | Full history via PencilKit's undo manager |
+| 🎨 **Filter effects** | Mono, Sepia, Vibrant, Invert, Comic, Soft Blur |
+| 🖌️ **Painting styles** | Oil, Watercolor, Pointillism, Mosaic (Core Image) |
+| 🗂️ **Layers** | Add / duplicate / reorder / lock / hide / rename, per-layer opacity, **groups** |
+| 📐 **Drawing guides** | Ruler, 1/2/3-point **perspective**, isometric & grid overlays |
 | 🔁 **Symmetry guides** | Vertical, Horizontal & 4-way (kaleidoscope) live mirroring |
-| ✍️ **Apple Pencil + palm rejection** | Pencil-only drawing policy ignores resting palm/finger |
+| ✍️ **Apple Pencil** | Palm rejection always on; optional finger drawing; haptics |
 | 📄 **Templates** | Blank, **Ring File**, Ruled, Grid, Dot Grid, Isometric, Storyboard, Music Staff |
 | 🖼️ **Learn by tracing** | Import a photo as an adjustable-opacity reference overlay |
-| 🧬 **Duplicate** | Duplicate a whole sketch or an individual layer |
+| ⭐ **Favorites** | Star sketches; favorites sort to the top |
+| ⚙️ **Settings** | Light / Dark / System theme, tool & new-sketch defaults |
 | ☁️ **iCloud storage** | Sketches saved to your personal iCloud Documents container (local fallback) |
 | 🪄 **Sketch → AR** | Place your flattened artwork onto a real surface with RealityKit |
 
