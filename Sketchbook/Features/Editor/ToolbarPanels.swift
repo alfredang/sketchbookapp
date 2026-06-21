@@ -4,24 +4,55 @@ struct BrushPanel: View {
     @ObservedObject var vm: EditorViewModel
     @Environment(\.dismiss) private var dismiss
 
-    private let columns = [GridItem(.adaptive(minimum: 90), spacing: 12)]
-
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(BrushType.allCases) { brush in
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("BRUSHES").font(.caption.weight(.semibold)).foregroundStyle(Theme.mutedInk)
+                    ForEach(BrushType.allCases.filter { $0 != .pencil }) { brush in
                         Button {
                             vm.selectBrush(brush)
                             dismiss()
                         } label: {
-                            VStack(spacing: 8) {
-                                Image(systemName: brush.systemImage).font(.title2)
-                                Text(brush.title).font(.caption)
+                            HStack(spacing: 14) {
+                                Image(systemName: brush.systemImage)
+                                    .font(.title3).frame(width: 28)
+                                    .foregroundStyle(isSelectedBrush(brush) ? .white : Theme.primary)
+                                Text(brush.title)
+                                    .font(.body.weight(.medium))
+                                    .foregroundStyle(isSelectedBrush(brush) ? .white : Theme.ink)
+                                    .frame(width: 84, alignment: .leading)
+                                BrushStrokePreview(brush: brush, color: vm.color)
+                                    .frame(height: 30).frame(maxWidth: .infinity)
+                                if isSelectedBrush(brush) { Image(systemName: "checkmark").foregroundStyle(.white) }
                             }
-                            .frame(maxWidth: .infinity).padding(.vertical, 14)
-                            .foregroundStyle(vm.brush == brush ? .white : Theme.ink)
-                            .background(vm.brush == brush ? Theme.primary : Theme.surface,
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .background(isSelectedBrush(brush) ? Theme.primary : Theme.surface,
+                                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                    }
+
+                    Text("PENCILS").font(.caption.weight(.semibold)).foregroundStyle(Theme.mutedInk)
+                        .padding(.top, 8)
+                    ForEach(PencilGrade.allCases) { grade in
+                        Button {
+                            vm.selectPencilGrade(grade)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: "pencil")
+                                    .font(.title3).frame(width: 28)
+                                    .foregroundStyle(vm.pencilGrade == grade ? .white : Theme.primary)
+                                Text("Pencil \(grade.title)")
+                                    .font(.body.weight(.medium))
+                                    .foregroundStyle(vm.pencilGrade == grade ? .white : Theme.ink)
+                                    .frame(width: 84, alignment: .leading)
+                                PencilStrokePreview(grade: grade)
+                                    .frame(height: 30).frame(maxWidth: .infinity)
+                                if vm.pencilGrade == grade { Image(systemName: "checkmark").foregroundStyle(.white) }
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .background(vm.pencilGrade == grade ? Theme.primary : Theme.surface,
                                         in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                     }
@@ -31,6 +62,54 @@ struct BrushPanel: View {
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle("Brushes")
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func isSelectedBrush(_ brush: BrushType) -> Bool {
+        vm.brush == brush && vm.pencilGrade == nil
+    }
+}
+
+/// Preview squiggle for a graphite pencil grade (darkness + width).
+struct PencilStrokePreview: View {
+    let grade: PencilGrade
+    var body: some View {
+        Canvas { ctx, size in
+            let midY = size.height / 2
+            var p = Path()
+            p.move(to: CGPoint(x: 6, y: midY))
+            p.addCurve(to: CGPoint(x: size.width - 6, y: midY),
+                       control1: CGPoint(x: size.width * 0.33, y: midY - size.height * 0.42),
+                       control2: CGPoint(x: size.width * 0.66, y: midY + size.height * 0.42))
+            ctx.stroke(p, with: .color(grade.color.opacity(0.8)),
+                       style: StrokeStyle(lineWidth: grade.width, lineCap: .round, lineJoin: .round))
+        }
+    }
+}
+
+/// A sample squiggle rendered with each brush's characteristic width and opacity
+/// so the brushes are visually distinguishable (icons alone read as similar).
+struct BrushStrokePreview: View {
+    let brush: BrushType
+    var color: Color
+
+    var body: some View {
+        Canvas { ctx, size in
+            let midY = size.height / 2
+            var p = Path()
+            p.move(to: CGPoint(x: 6, y: midY))
+            p.addCurve(to: CGPoint(x: size.width - 6, y: midY),
+                       control1: CGPoint(x: size.width * 0.33, y: midY - size.height * 0.42),
+                       control2: CGPoint(x: size.width * 0.66, y: midY + size.height * 0.42))
+            let w = min(brush.defaultWidth, 22)
+            var strokeColor = color
+            switch brush {
+            case .pencil, .crayon: strokeColor = color.opacity(0.65)
+            case .marker, .watercolor: strokeColor = color.opacity(0.45)
+            default: break
+            }
+            ctx.stroke(p, with: .color(strokeColor),
+                       style: StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round))
         }
     }
 }

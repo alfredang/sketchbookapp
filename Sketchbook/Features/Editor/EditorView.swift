@@ -58,15 +58,24 @@ struct EditorView: View {
 
             Divider().frame(height: 24)
 
-            // Tool modes
-            ForEach(ToolMode.allCases) { mode in
-                toolButton(mode)
-            }
-
-            Button { showBrushes = true } label: {
-                Image(systemName: vm.brush.systemImage)
+            // Brush (draw) — shows the current brush and opens the brush picker.
+            Button {
+                vm.toolMode = .draw
+                showBrushes = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: vm.brush.systemImage)
+                    Image(systemName: "chevron.down").font(.caption2)
+                }
+                .foregroundStyle(vm.toolMode == .draw ? .white : Theme.ink)
+                .frame(height: 32).padding(.horizontal, 8)
+                .background(vm.toolMode == .draw ? Theme.primary : .clear,
+                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             }
             .help("Brushes")
+
+            toolButton(.erase)
+            toolButton(.fill)
 
             ColorPicker("", selection: $vm.color, supportsOpacity: true)
                 .labelsHidden().frame(width: 32)

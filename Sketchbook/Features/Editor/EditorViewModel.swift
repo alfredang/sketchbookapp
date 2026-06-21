@@ -32,6 +32,13 @@ final class EditorViewModel: ObservableObject {
 
     init(document: SketchDocument) {
         self.document = document
+        // Apply saved drawing defaults (Settings).
+        let defaults = UserDefaults.standard
+        if let raw = defaults.string(forKey: SettingsKey.defaultBrush),
+           let b = BrushType(rawValue: raw) {
+            self.brush = b
+        }
+        self.pencilOnly = defaults.bool(forKey: SettingsKey.defaultPencilOnly)
         self.width = brush.defaultWidth
     }
 
@@ -73,9 +80,22 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
+    /// Currently selected graphite grade (when the pencil brush is in use).
+    @Published var pencilGrade: PencilGrade?
+
     func selectBrush(_ b: BrushType) {
         brush = b
         width = b.defaultWidth
+        pencilGrade = nil
+        toolMode = .draw
+    }
+
+    /// Select a graphite pencil grade — sets the pencil ink with grade darkness + width.
+    func selectPencilGrade(_ grade: PencilGrade) {
+        brush = .pencil
+        width = grade.width
+        color = grade.color
+        pencilGrade = grade
         toolMode = .draw
     }
 

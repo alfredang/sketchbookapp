@@ -28,5 +28,6 @@ struct MainTabView: View {
                 .tag(2)
         }
         .tint(Theme.primary)
+        .preferredColorScheme(.light) // app uses a fixed warm light theme
     }
 }

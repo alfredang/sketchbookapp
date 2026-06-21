@@ -4,6 +4,8 @@ struct NewSketchSheet: View {
     var onCreate: (SketchDocument) -> Void
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage(SettingsKey.defaultTemplate) private var defaultTemplate = TemplateKind.blank.rawValue
+    @AppStorage(SettingsKey.defaultLandscape) private var defaultLandscape = true
     @State private var title = "Untitled"
     @State private var template: TemplateKind = .blank
     @State private var landscape = true
@@ -30,6 +32,10 @@ struct NewSketchSheet: View {
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle("New Sketch")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                template = TemplateKind(rawValue: defaultTemplate) ?? .blank
+                landscape = defaultLandscape
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

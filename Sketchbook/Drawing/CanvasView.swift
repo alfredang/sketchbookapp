@@ -59,6 +59,10 @@ struct CanvasView: UIViewRepresentable {
         canvas.isRulerActive = isRulerActive
         canvas.drawingPolicy = pencilOnly ? .pencilOnly : .anyInput
         canvas.isUserInteractionEnabled = !isLocked
+        // In Dark Mode PencilKit inverts ink colors (black ink → white), making
+        // black strokes invisible on the white canvas. Pin the canvas to light
+        // so ink renders in the authored color.
+        canvas.overrideUserInterfaceStyle = .light
     }
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {

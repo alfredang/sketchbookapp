@@ -5,6 +5,7 @@ struct GalleryView: View {
     @State private var newSketch: SketchDocument?
     @State private var openSketch: SketchDocument?
     @State private var showingNewSheet = false
+    @State private var showingSettings = false
 
     private let columns = [GridItem(.adaptive(minimum: 200), spacing: 20)]
 
@@ -33,9 +34,10 @@ struct GalleryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Label(store.usingICloud ? "iCloud" : "On this device",
-                          systemImage: store.usingICloud ? "icloud.fill" : "internaldrive")
-                        .font(.caption).foregroundStyle(Theme.mutedInk)
+                    Button { showingSettings = true } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingNewSheet = true } label: { Label("New", systemImage: "plus") }
@@ -51,6 +53,9 @@ struct GalleryView: View {
             .fullScreenCover(item: $openSketch) { doc in
                 EditorView(document: doc)
                     .environmentObject(store)
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView().environmentObject(store)
             }
             .task {
                 await store.reload()
