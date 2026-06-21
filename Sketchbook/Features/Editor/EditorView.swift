@@ -159,35 +159,39 @@ struct EditorView: View {
         GeometryReader { geo in
             let cs = vm.document.canvasSize
             let scale = min(geo.size.width / cs.width, geo.size.height / cs.height)
+            // On-screen (display) size of the canvas; drawing stays in `cs` space.
+            let disp = CGSize(width: cs.width * scale, height: cs.height * scale)
             ZStack {
                 // Background + template
                 Color(hex: vm.document.backgroundHex)
                 Image(uiImage: TemplateRenderer.render(vm.document.template, size: cs, backgroundColor: .clear))
-                    .resizable().frame(width: cs.width, height: cs.height)
+                    .resizable().frame(width: disp.width, height: disp.height)
 
                 // Layers in order; active layer is the live PencilKit canvas.
                 ForEach(Array(vm.document.layers.enumerated()), id: \.element.id) { idx, layer in
                     if layer.isVisible {
-                        layerView(idx: idx, layer: layer, size: cs)
+                        layerView(idx: idx, layer: layer, displaySize: disp, canvasSize: cs)
                     }
                 }
 
                 // Symmetry guides
-                SymmetryGuides(mode: vm.symmetry, size: cs)
+                SymmetryGuides(mode: vm.symmetry, size: disp)
                     .allowsHitTesting(false)
 
-                // Fill tap catcher (only active in fill mode, sits on top)
+                // Fill tap catcher (only active in fill mode, sits on top).
+                // Map the tap from display space back into canvas coordinates.
                 if vm.toolMode == .fill {
                     Color.clear.contentShape(Rectangle())
-                        .frame(width: cs.width, height: cs.height)
+                        .frame(width: disp.width, height: disp.height)
                         .gesture(DragGesture(minimumDistance: 0).onEnded { value in
-                            vm.performFill(at: value.location)
+                            let p = CGPoint(x: value.location.x / max(scale, 0.0001),
+                                            y: value.location.y / max(scale, 0.0001))
+                            vm.performFill(at: p)
                         })
                 }
             }
-            .frame(width: cs.width, height: cs.height)
+            .frame(width: disp.width, height: disp.height)
             .clipped()
-            .scaleEffect(scale)
             .frame(width: geo.size.width, height: geo.size.height)
             .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
         }
@@ -195,7 +199,7 @@ struct EditorView: View {
     }
 
     @ViewBuilder
-    private func layerView(idx: Int, layer: Layer, size: CGSize) -> some View {
+    private func layerView(idx: Int, layer: Layer, displaySize: CGSize, canvasSize: CGSize) -> some View {
         if idx == vm.activeIndex && !layer.isReference {
             ZStack {
                 // Raster contents of the active layer (fills, filters, imported art)
@@ -203,22 +207,22 @@ struct EditorView: View {
                 if let image = layer.image {
                     Image(uiImage: image)
                         .resizable()
-                        .frame(width: size.width, height: size.height)
+                        .frame(width: displaySize.width, height: displaySize.height)
                 }
                 CanvasView(drawing: Binding(get: { vm.activeDrawing }, set: { vm.activeDrawing = $0 }),
                            tool: vm.currentTool,
                            isRulerActive: vm.isRulerActive,
                            pencilOnly: vm.pencilOnly,
                            symmetry: vm.symmetry,
-                           canvasSize: size,
+                           canvasSize: canvasSize,
                            isLocked: layer.isLocked || vm.toolMode == .fill)
-                    .frame(width: size.width, height: size.height)
+                    .frame(width: displaySize.width, height: displaySize.height)
             }
             .opacity(layer.opacity)
         } else {
-            Image(uiImage: LayerCompositor.renderLayer(layer, size: size))
+            Image(uiImage: LayerCompositor.renderLayer(layer, size: canvasSize))
                 .resizable()
-                .frame(width: size.width, height: size.height)
+                .frame(width: displaySize.width, height: displaySize.height)
                 .opacity(layer.opacity)
         }
     }

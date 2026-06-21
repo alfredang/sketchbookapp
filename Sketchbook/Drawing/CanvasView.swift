@@ -25,9 +25,10 @@ struct CanvasView: UIViewRepresentable {
         canvas.isOpaque = false
         canvas.alwaysBounceVertical = false
         canvas.alwaysBounceHorizontal = false
+        canvas.bouncesZoom = false
+        canvas.showsVerticalScrollIndicator = false
+        canvas.showsHorizontalScrollIndicator = false
         canvas.contentSize = canvasSize
-        canvas.minimumZoomScale = 1
-        canvas.maximumZoomScale = 1
         applyConfig(canvas)
         return canvas
     }
@@ -38,6 +39,19 @@ struct CanvasView: UIViewRepresentable {
             canvas.drawing = drawing
         }
         applyConfig(canvas)
+        // Fit the fixed-size drawing canvas into the on-screen frame using
+        // PencilKit's own zoom (NOT a SwiftUI .scaleEffect, which breaks Pencil
+        // touch handling). Drawing stays in canvasSize coordinates.
+        canvas.contentSize = canvasSize
+        let bounds = canvas.bounds.size
+        if bounds.width > 0, bounds.height > 0 {
+            let fit = min(bounds.width / canvasSize.width, bounds.height / canvasSize.height)
+            if fit > 0, fit.isFinite {
+                canvas.minimumZoomScale = fit
+                canvas.maximumZoomScale = fit
+                if abs(canvas.zoomScale - fit) > 0.0001 { canvas.zoomScale = fit }
+            }
+        }
     }
 
     private func applyConfig(_ canvas: PKCanvasView) {
