@@ -75,7 +75,21 @@ struct EditorView: View {
             }
             .help("Brushes")
 
-            toolButton(.erase)
+            // Eraser — tap to select; tap again (when active) to adjust size.
+            Button {
+                if vm.toolMode == .erase { showWidth = true } else { vm.toolMode = .erase; Haptics.select() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "eraser")
+                    if vm.toolMode == .erase { Image(systemName: "chevron.down").font(.caption2) }
+                }
+                .foregroundStyle(vm.toolMode == .erase ? .white : Theme.ink)
+                .frame(height: 32).padding(.horizontal, 8)
+                .background(vm.toolMode == .erase ? Theme.primary : .clear,
+                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            }
+            .help("Eraser")
+
             toolButton(.fill)
             toolButton(.lasso)
 
