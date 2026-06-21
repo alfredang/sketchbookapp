@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LaunchAgent: runs the release watcher at login so each new release auto-installs
+     on the connected iPad. Install with:
+       sed -e "s#__PROJECT_DIR__#$(pwd)#g" -e "s#__USER__#$USER#g" \
+         .claude/skills/ios-auto-release/templates/device-install.plist \
+         > ~/Library/LaunchAgents/com.tertiaryinfotech.sketchbook.deviceinstall.plist
+       launchctl load ~/Library/LaunchAgents/com.tertiaryinfotech.sketchbook.deviceinstall.plist
+     Stop with: launchctl unload ~/Library/LaunchAgents/com.tertiaryinfotech.sketchbook.deviceinstall.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tertiaryinfotech.sketchbook.deviceinstall</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__PROJECT_DIR__/.claude/skills/ios-auto-release/scripts/watch_release_install.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_DIR__</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Applications/Xcode.app/Contents/Developer/usr/bin</string>
+        <key>INTERVAL</key>
+        <string>180</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/sketchbook-deviceinstall.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/sketchbook-deviceinstall.err</string>
+</dict>
+</plist>

@@ -84,6 +84,43 @@ Then `gh secret list --repo $REPO` should show all six. Trigger with a push or
 - **App Privacy + age rating** are app-level and carry across versions — set once in the UI
   (see the `app-store-submission` skill); CI does not touch them.
 
+## Auto-install on your iPad on each release (local runner)
+
+Cloud CI (GitHub Actions) **cannot reach a physical iPad** — it has no USB/network path to
+your device. So on-device install of each release runs **locally on your Mac** (iPad connected,
+Developer Mode on, device paired & trusted — see the `ios-install-device` skill).
+
+Two pieces (in `scripts/`):
+
+- **`install_on_device.sh`** — builds a *development* copy of the current checkout and installs +
+  launches it on **all connected** iPhones/iPads (matches by `productType`, not the device's name).
+  Regenerates the XcodeGen project and uses the `.env` ASC key for `-allowProvisioningUpdates`.
+  Restrict to specific devices by **name** with `DEVICES`, e.g. `DEVICES="AA" bash …` (iPad only).
+  Run any time: `bash .claude/skills/ios-auto-release/scripts/install_on_device.sh`.
+
+  > **This project's devices:** `AA` = iPad (iPad Air 11" M3), `A2` = iPhone (iPhone 16). By default
+  > a release installs on **both**; set `DEVICES="AA,A2"` (or a subset) to be explicit.
+- **`watch_release_install.sh`** — polls `origin/<branch>`; when it advances (a new release in this
+  CI's push-to-`main` model) it checks that commit out in a **throwaway `git worktree`** and runs the
+  installer. **Your working tree is never touched** (no pull/reset/checkout in place); the gitignored
+  `.env` is copied into the worktree so signing works.
+
+Run it as a **LaunchAgent** so each release auto-installs at login:
+
+```bash
+PLIST=~/Library/LaunchAgents/com.tertiaryinfotech.sketchbook.deviceinstall.plist
+sed -e "s#__PROJECT_DIR__#$(pwd)#g" -e "s#__USER__#$USER#g" \
+  .claude/skills/ios-auto-release/templates/device-install.plist > "$PLIST"
+launchctl load "$PLIST"        # starts now + at every login; logs to /tmp/sketchbook-deviceinstall*.log
+launchctl unload "$PLIST"      # stop watching
+```
+
+Notes:
+- It installs a **development** build (not the App Store binary — those are distribution-signed and
+  can't sideload). It tracks the **same source** the release was cut from, so the device matches the release.
+- Prefer tag-based releases? Set `BRANCH` to a tag ref or adapt the watcher to `git fetch --tags`.
+- The Mac must be awake with the iPad reachable; if the device is offline a cycle is skipped and retried.
+
 ## Caution
 
 Auto-submitting **every** push to App Store review is aggressive (Apple dislikes churn). Prefer
