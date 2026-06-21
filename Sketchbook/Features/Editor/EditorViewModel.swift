@@ -34,6 +34,31 @@ final class EditorViewModel: ObservableObject {
 
     private var store: DocumentStore?
 
+    // MARK: - Render caches (avoid re-rendering full-res images every view update,
+    // which caused input latency when switching tools).
+    private var templateCache: (TemplateKind, CGFloat, CGFloat, UIImage)?
+    private var layerImageCache: [UUID: UIImage] = [:]
+
+    func templateImage(size: CGSize) -> UIImage {
+        if let c = templateCache, c.0 == document.template, c.1 == size.width, c.2 == size.height {
+            return c.3
+        }
+        let img = TemplateRenderer.render(document.template, size: size, backgroundColor: .clear)
+        templateCache = (document.template, size.width, size.height, img)
+        return img
+    }
+
+    func inactiveLayerImage(_ layer: Layer, size: CGSize) -> UIImage {
+        if let img = layerImageCache[layer.id] { return img }
+        let img = LayerCompositor.renderLayer(layer, size: size)
+        layerImageCache[layer.id] = img
+        return img
+    }
+
+    private func invalidateLayerImage(_ id: UUID?) {
+        if let id { layerImageCache.removeValue(forKey: id) } else { layerImageCache.removeAll() }
+    }
+
     init(document: SketchDocument) {
         self.document = document
         // Apply saved defaults (Settings).
@@ -146,11 +171,18 @@ final class EditorViewModel: ObservableObject {
 
     func moveLayer(from source: IndexSet, to destination: Int) {
         document.layers.move(fromOffsets: source, toOffset: destination)
+        invalidateLayerImage(nil)
     }
 
     func setActiveLayer(_ index: Int) {
         guard document.layers.indices.contains(index) else { return }
+        // The layer we're leaving may have changed — drop its cached image so it
+        // re-renders correctly as an inactive layer.
+        if document.layers.indices.contains(activeIndex) {
+            invalidateLayerImage(document.layers[activeIndex].id)
+        }
         document.activeLayerIndex = index
+        invalidateLayerImage(document.layers[index].id)
     }
 
     func renameLayer(at index: Int, to name: String) {
@@ -195,6 +227,7 @@ final class EditorViewModel: ObservableObject {
             patch.draw(in: rect)
         }
         document.layers[activeIndex].imageData = merged.pngData()
+        invalidateLayerImage(document.layers[activeIndex].id)
     }
 
     // MARK: - Reference image (upload + overlay for tracing)
@@ -224,11 +257,15 @@ final class EditorViewModel: ObservableObject {
         let filtered = FilterEngine.apply(filter, to: rendered)
         document.layers[activeIndex].imageData = filtered.pngData()
         document.layers[activeIndex].drawing = PKDrawing() // baked into the image
+        invalidateLayerImage(document.layers[activeIndex].id)
     }
 
     // MARK: - Templates / background
 
-    func setTemplate(_ template: TemplateKind) { document.template = template }
+    func setTemplate(_ template: TemplateKind) {
+        document.template = template
+        templateCache = nil
+    }
 
     // MARK: - Persistence
 

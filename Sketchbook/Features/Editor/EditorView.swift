@@ -197,7 +197,7 @@ struct EditorView: View {
             ZStack {
                 // Background + template
                 Color(hex: vm.document.backgroundHex)
-                Image(uiImage: TemplateRenderer.render(vm.document.template, size: cs, backgroundColor: .clear))
+                Image(uiImage: vm.templateImage(size: cs))
                     .resizable().frame(width: disp.width, height: disp.height)
 
                 // Layers in order; active layer is the live PencilKit canvas.
@@ -246,7 +246,8 @@ struct EditorView: View {
                 CanvasView(drawing: Binding(get: { vm.activeDrawing }, set: { vm.activeDrawing = $0 }),
                            tool: vm.currentTool,
                            isRulerActive: vm.isRulerActive,
-                           pencilOnly: vm.pencilOnly,
+                           // Allow finger for lasso selection even when finger-drawing is off.
+                           pencilOnly: vm.pencilOnly && vm.toolMode != .lasso,
                            symmetry: vm.symmetry,
                            canvasSize: canvasSize,
                            isLocked: layer.isLocked || vm.toolMode == .fill,
@@ -255,7 +256,7 @@ struct EditorView: View {
             }
             .opacity(layer.opacity)
         } else {
-            Image(uiImage: LayerCompositor.renderLayer(layer, size: canvasSize))
+            Image(uiImage: vm.inactiveLayerImage(layer, size: canvasSize))
                 .resizable()
                 .frame(width: displaySize.width, height: displaySize.height)
                 .opacity(layer.opacity)
