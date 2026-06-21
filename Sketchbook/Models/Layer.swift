@@ -17,6 +17,8 @@ struct Layer: Identifiable, Codable, Equatable {
     var imageData: Data?
     /// When true this is a non-printing tracing reference and is excluded from exports.
     var isReference: Bool
+    /// Optional group name for organizing layers (nil = ungrouped).
+    var groupName: String?
 
     init(id: UUID = UUID(),
          name: String,
@@ -25,7 +27,8 @@ struct Layer: Identifiable, Codable, Equatable {
          opacity: Double = 1.0,
          drawing: PKDrawing = PKDrawing(),
          imageData: Data? = nil,
-         isReference: Bool = false) {
+         isReference: Bool = false,
+         groupName: String? = nil) {
         self.id = id
         self.name = name
         self.isVisible = isVisible
@@ -34,6 +37,7 @@ struct Layer: Identifiable, Codable, Equatable {
         self.drawingData = drawing.dataRepresentation()
         self.imageData = imageData
         self.isReference = isReference
+        self.groupName = groupName
     }
 
     var drawing: PKDrawing {

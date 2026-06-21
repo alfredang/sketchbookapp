@@ -1,6 +1,16 @@
 import SwiftUI
 import PencilKit
 
+/// Holds a weak reference to the live PKCanvasView so the toolbar can drive
+/// PencilKit's undo/redo.
+final class CanvasHandle: ObservableObject {
+    weak var canvas: PKCanvasView?
+    func undo() { canvas?.undoManager?.undo() }
+    func redo() { canvas?.undoManager?.redo() }
+    var canUndo: Bool { canvas?.undoManager?.canUndo ?? false }
+    var canRedo: Bool { canvas?.undoManager?.canRedo ?? false }
+}
+
 /// SwiftUI wrapper around `PKCanvasView` for the active layer.
 ///
 /// - Apple Pencil + palm rejection are handled by PencilKit; `pencilOnly`
@@ -14,12 +24,14 @@ struct CanvasView: UIViewRepresentable {
     var symmetry: SymmetryMode
     var canvasSize: CGSize
     var isLocked: Bool
+    var handle: CanvasHandle?
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = PKCanvasView()
         canvas.delegate = context.coordinator
+        handle?.canvas = canvas
         canvas.drawing = drawing
         canvas.backgroundColor = .clear
         canvas.isOpaque = false

@@ -1,22 +1,43 @@
 import SwiftUI
 
-/// Persisted user preferences. Keys are shared with `NewSketchSheet` and
-/// `EditorViewModel` so the chosen defaults apply to new sketches.
+/// Persisted user preferences. Keys are shared with `NewSketchSheet`,
+/// `EditorViewModel`, `Haptics` and the app root.
 enum SettingsKey {
     static let defaultTemplate = "defaultTemplate"
     static let defaultLandscape = "defaultLandscape"
     static let defaultBrush = "defaultBrush"
-    static let defaultPencilOnly = "defaultPencilOnly"
+    static let defaultPencilGrade = "defaultPencilGrade"
+    static let defaultEraseSize = "defaultEraseSize"
+    static let fingerDrawing = "fingerDrawing"   // default false → Pencil only
+    static let haptics = "haptics"               // default true
+    static let theme = "theme"                   // light | dark | system (default light)
+}
+
+enum AppTheme: String, CaseIterable, Identifiable {
+    case light, dark, system
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .light: return .light
+        case .dark: return .dark
+        case .system: return nil
+        }
+    }
 }
 
 struct SettingsView: View {
     @EnvironmentObject private var store: DocumentStore
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage(SettingsKey.theme) private var theme = AppTheme.light.rawValue
+    @AppStorage(SettingsKey.fingerDrawing) private var fingerDrawing = false
+    @AppStorage(SettingsKey.haptics) private var haptics = true
     @AppStorage(SettingsKey.defaultTemplate) private var defaultTemplate = TemplateKind.blank.rawValue
     @AppStorage(SettingsKey.defaultLandscape) private var defaultLandscape = true
     @AppStorage(SettingsKey.defaultBrush) private var defaultBrush = BrushType.pen.rawValue
-    @AppStorage(SettingsKey.defaultPencilOnly) private var defaultPencilOnly = false
+    @AppStorage(SettingsKey.defaultPencilGrade) private var defaultPencilGrade = PencilGrade.hb.rawValue
+    @AppStorage(SettingsKey.defaultEraseSize) private var defaultEraseSize = 24.0
 
     private let developerURL = URL(string: "https://www.tertiaryinfotech.com")!
     private var versionString: String {
@@ -29,17 +50,34 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Storage") {
-                    HStack {
-                        Label(store.usingICloud ? "iCloud" : "On this device",
-                              systemImage: store.usingICloud ? "icloud.fill" : "internaldrive")
-                        Spacer()
-                        Text(store.usingICloud ? "Synced" : "Local").foregroundStyle(Theme.mutedInk)
+                Section("Appearance") {
+                    Picker("Theme", selection: $theme) {
+                        ForEach(AppTheme.allCases) { Text($0.title).tag($0.rawValue) }
                     }
-                    Text(store.usingICloud
-                         ? "Sketches sync to your personal iCloud across your devices."
-                         : "Sketches are saved on this device. Sign in to iCloud to sync.")
-                        .font(.caption).foregroundStyle(Theme.mutedInk)
+                }
+
+                Section("Drawing") {
+                    Toggle("Finger Drawing", isOn: $fingerDrawing)
+                    HStack {
+                        Label("Palm Rejection", systemImage: "hand.raised.fill")
+                        Spacer()
+                        Text("Always On").foregroundStyle(Theme.mutedInk)
+                    }
+                    Toggle("Haptic Feedback", isOn: $haptics)
+                }
+
+                Section("Tool Defaults") {
+                    Picker("Brush", selection: $defaultBrush) {
+                        ForEach(BrushType.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    Picker("Pencil Grade", selection: $defaultPencilGrade) {
+                        ForEach(PencilGrade.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    VStack(alignment: .leading) {
+                        Text("Eraser Size: \(Int(defaultEraseSize)) pt")
+                            .font(.caption).foregroundStyle(Theme.mutedInk)
+                        Slider(value: $defaultEraseSize, in: 6...80)
+                    }
                 }
 
                 Section("New Sketch Defaults") {
@@ -49,12 +87,12 @@ struct SettingsView: View {
                     Toggle("Landscape", isOn: $defaultLandscape)
                 }
 
-                Section("Drawing Defaults") {
-                    Picker("Brush", selection: $defaultBrush) {
-                        ForEach(BrushType.allCases) { Text($0.title).tag($0.rawValue) }
-                    }
-                    Toggle(isOn: $defaultPencilOnly) {
-                        Label("Palm rejection (Pencil only)", systemImage: "hand.raised")
+                Section("Storage") {
+                    HStack {
+                        Label(store.usingICloud ? "iCloud" : "On this device",
+                              systemImage: store.usingICloud ? "icloud.fill" : "internaldrive")
+                        Spacer()
+                        Text(store.usingICloud ? "Synced" : "Local").foregroundStyle(Theme.mutedInk)
                     }
                 }
 
@@ -62,10 +100,7 @@ struct SettingsView: View {
                     Link(destination: developerURL) {
                         Label("Tertiary Infotech Academy", systemImage: "globe")
                     }
-                    HStack {
-                        Text("Version"); Spacer()
-                        Text(versionString).foregroundStyle(Theme.mutedInk)
-                    }
+                    HStack { Text("Version"); Spacer(); Text(versionString).foregroundStyle(Theme.mutedInk) }
                 }
             }
             .navigationTitle("Settings")

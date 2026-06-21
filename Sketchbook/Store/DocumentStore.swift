@@ -82,6 +82,15 @@ final class DocumentStore: ObservableObject {
         return doc
     }
 
+    /// Star / unstar a sketch without bumping its modified date.
+    func toggleFavorite(_ document: SketchDocument) {
+        guard let idx = documents.firstIndex(where: { $0.id == document.id }) else { return }
+        documents[idx].isFavorite.toggle()
+        let doc = documents[idx]
+        let url = documentsDirectory().appendingPathComponent(doc.fileName)
+        if let data = try? JSONEncoder().encode(doc) { try? data.write(to: url, options: .atomic) }
+    }
+
     func delete(_ document: SketchDocument) {
         let url = documentsDirectory().appendingPathComponent(document.fileName)
         try? FileManager.default.removeItem(at: url)

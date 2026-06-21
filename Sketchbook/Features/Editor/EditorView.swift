@@ -12,6 +12,7 @@ struct EditorView: View {
     @State private var showWidth = false
     @State private var photoItem: PhotosPickerItem?
     @State private var arImage: UIImage?
+    @StateObject private var canvasHandle = CanvasHandle()
 
     init(document: SketchDocument) {
         _vm = StateObject(wrappedValue: EditorViewModel(document: document))
@@ -76,6 +77,7 @@ struct EditorView: View {
 
             toolButton(.erase)
             toolButton(.fill)
+            toolButton(.lasso)
 
             ColorPicker("", selection: $vm.color, supportsOpacity: true)
                 .labelsHidden().frame(width: 32)
@@ -83,25 +85,19 @@ struct EditorView: View {
             Button { showWidth.toggle() } label: { Image(systemName: "lineweight") }
                 .popover(isPresented: $showWidth) { widthPopover }
 
+            Button { canvasHandle.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                .help("Undo")
+            Button { canvasHandle.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                .help("Redo")
+
             Divider().frame(height: 24)
 
-            Button { vm.isRulerActive.toggle() } label: {
-                Image(systemName: "ruler").foregroundStyle(vm.isRulerActive ? Theme.primary : Theme.ink)
-            }
-
-            symmetryMenu
-            templateMenu
-            filterMenu
+            guidesMenu
 
             PhotosPicker(selection: $photoItem, matching: .images) {
                 Image(systemName: "photo.on.rectangle.angled")
             }
-
-            Button { vm.pencilOnly.toggle() } label: {
-                Image(systemName: vm.pencilOnly ? "hand.raised.fill" : "hand.raised.slash")
-                    .foregroundStyle(vm.pencilOnly ? Theme.primary : Theme.ink)
-            }
-            .help("Palm rejection (Pencil only)")
+            .help("Import reference photo")
 
             Spacer()
 
@@ -127,39 +123,67 @@ struct EditorView: View {
 
     private var widthPopover: some View {
         VStack(alignment: .leading) {
-            Text("Brush Size: \(Int(vm.width))").font(.subheadline)
-            Slider(value: $vm.width, in: 1...60)
+            if vm.toolMode == .erase {
+                Text("Eraser Size: \(Int(vm.eraseWidth))").font(.subheadline)
+                Slider(value: $vm.eraseWidth, in: 6...80)
+            } else {
+                Text("Brush Size: \(Int(vm.width))").font(.subheadline)
+                Slider(value: $vm.width, in: 1...60)
+            }
         }
         .padding().frame(width: 260)
     }
 
-    private var symmetryMenu: some View {
+    /// Single dropdown grouping rulers, symmetry guides, page templates and filter effects.
+    private var guidesMenu: some View {
         Menu {
-            ForEach(SymmetryMode.allCases) { mode in
-                Button { vm.symmetry = mode } label: {
-                    Label(mode.title, systemImage: mode.systemImage)
+            Button {
+                vm.isRulerActive.toggle()
+            } label: {
+                Label("Ruler", systemImage: vm.isRulerActive ? "checkmark" : "ruler")
+            }
+
+            Menu("Symmetry") {
+                ForEach(SymmetryMode.allCases) { mode in
+                    Button { vm.symmetry = mode } label: {
+                        Label(mode.title, systemImage: vm.symmetry == mode ? "checkmark" : mode.systemImage)
+                    }
+                }
+            }
+
+            Menu("Drawing Guide") {
+                ForEach(PerspectiveGuide.allCases) { g in
+                    Button { vm.perspective = g } label: {
+                        Label(g.title, systemImage: vm.perspective == g ? "checkmark" : "skew")
+                    }
+                }
+            }
+
+            Menu("Template") {
+                ForEach(TemplateKind.allCases) { kind in
+                    Button { vm.setTemplate(kind) } label: {
+                        Label(kind.title, systemImage: vm.document.template == kind ? "checkmark" : kind.systemImage)
+                    }
+                }
+            }
+
+            Menu("Filter Effect") {
+                ForEach(SketchFilter.photo) { f in
+                    Button { vm.applyFilter(f) } label: { Text(f.title) }
+                }
+            }
+
+            Menu("Painting Style") {
+                ForEach(SketchFilter.painting) { f in
+                    Button { vm.applyFilter(f) } label: { Text(f.title) }
                 }
             }
         } label: {
-            Image(systemName: vm.symmetry == .off ? "circle.slash" : vm.symmetry.systemImage)
-                .foregroundStyle(vm.symmetry == .off ? Theme.ink : Theme.primary)
+            let active = vm.isRulerActive || vm.symmetry != .off || vm.perspective != .off
+            Image(systemName: "wand.and.stars")
+                .foregroundStyle(active ? Theme.primary : Theme.ink)
         }
-    }
-
-    private var templateMenu: some View {
-        Menu {
-            ForEach(TemplateKind.allCases) { kind in
-                Button { vm.setTemplate(kind) } label: { Label(kind.title, systemImage: kind.systemImage) }
-            }
-        } label: { Image(systemName: "doc.plaintext") }
-    }
-
-    private var filterMenu: some View {
-        Menu {
-            ForEach(SketchFilter.allCases) { f in
-                Button { vm.applyFilter(f) } label: { Text(f.title) }
-            }
-        } label: { Image(systemName: "camera.filters") }
+        .help("Guides & Effects")
     }
 
     // MARK: - Canvas
@@ -183,9 +207,10 @@ struct EditorView: View {
                     }
                 }
 
-                // Symmetry guides
+                // Symmetry + perspective/drawing guides
                 SymmetryGuides(mode: vm.symmetry, size: disp)
                     .allowsHitTesting(false)
+                PerspectiveGuides(guide: vm.perspective, size: disp)
 
                 // Fill tap catcher (only active in fill mode, sits on top).
                 // Map the tap from display space back into canvas coordinates.
@@ -224,7 +249,8 @@ struct EditorView: View {
                            pencilOnly: vm.pencilOnly,
                            symmetry: vm.symmetry,
                            canvasSize: canvasSize,
-                           isLocked: layer.isLocked || vm.toolMode == .fill)
+                           isLocked: layer.isLocked || vm.toolMode == .fill,
+                           handle: canvasHandle)
                     .frame(width: displaySize.width, height: displaySize.height)
             }
             .opacity(layer.opacity)

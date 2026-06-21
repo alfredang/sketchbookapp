@@ -15,6 +15,7 @@ struct SketchbookApp: App {
 
 struct MainTabView: View {
     @State private var selection: Int = Int(ProcessInfo.processInfo.environment["SKETCH_TAB"] ?? "0") ?? 0
+    @AppStorage(SettingsKey.theme) private var theme = AppTheme.light.rawValue
     var body: some View {
         TabView(selection: $selection) {
             GalleryView()
@@ -28,6 +29,6 @@ struct MainTabView: View {
                 .tag(2)
         }
         .tint(Theme.primary)
-        .preferredColorScheme(.light) // app uses a fixed warm light theme
+        .preferredColorScheme((AppTheme(rawValue: theme) ?? .light).colorScheme)
     }
 }

@@ -18,6 +18,8 @@ struct SketchDocument: Identifiable, Codable, Equatable {
     var activeLayerIndex: Int
     /// PNG thumbnail for the gallery grid.
     var thumbnailData: Data?
+    /// Starred / favorite sketch.
+    var isFavorite: Bool = false
 
     var canvasSize: CGSize { CGSize(width: canvasWidth, height: canvasHeight) }
 

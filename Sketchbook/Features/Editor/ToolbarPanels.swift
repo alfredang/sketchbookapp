@@ -117,6 +117,8 @@ struct BrushStrokePreview: View {
 struct LayersPanel: View {
     @ObservedObject var vm: EditorViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var groupingIndex: Int?
+    @State private var newGroupName = ""
 
     var body: some View {
         NavigationStack {
@@ -131,13 +133,30 @@ struct LayersPanel: View {
                         }
                     }
                 }
+
+                if !vm.groupNames.isEmpty {
+                    Section("Groups") {
+                        ForEach(vm.groupNames, id: \.self) { group in
+                            HStack {
+                                Image(systemName: "folder").foregroundStyle(Theme.primary)
+                                Text(group).foregroundStyle(Theme.ink)
+                                Spacer()
+                                Button { vm.toggleGroupVisibility(group) } label: {
+                                    Image(systemName: "eye").foregroundStyle(Theme.mutedInk)
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+
                 Section("Layers") {
                     ForEach(Array(vm.document.layers.enumerated()), id: \.element.id) { idx, layer in
-                        LayerRow(vm: vm, index: idx, layer: layer)
+                        LayerRow(vm: vm, index: idx, layer: layer) {
+                            groupingIndex = idx
+                            newGroupName = layer.groupName ?? ""
+                        }
                     }
-                    .onDelete { offsets in
-                        offsets.forEach { vm.deleteLayer(at: $0) }
-                    }
+                    .onDelete { offsets in offsets.forEach { vm.deleteLayer(at: $0) } }
                     .onMove { source, dest in vm.moveLayer(from: source, to: dest) }
                 }
             }
@@ -150,6 +169,15 @@ struct LayersPanel: View {
                     Button { vm.addLayer() } label: { Image(systemName: "plus") }
                 }
             }
+            .alert("Group Name", isPresented: Binding(get: { groupingIndex != nil },
+                                                      set: { if !$0 { groupingIndex = nil } })) {
+                TextField("Group name (empty to ungroup)", text: $newGroupName)
+                Button("Save") {
+                    if let i = groupingIndex { vm.setGroup(at: i, to: newGroupName) }
+                    groupingIndex = nil
+                }
+                Button("Cancel", role: .cancel) { groupingIndex = nil }
+            }
         }
     }
 }
@@ -158,9 +186,10 @@ struct LayerRow: View {
     @ObservedObject var vm: EditorViewModel
     let index: Int
     let layer: Layer
+    var onGroup: () -> Void
 
     var body: some View {
-        HStack {
+        HStack(spacing: 10) {
             Button {
                 vm.document.layers[index].isVisible.toggle()
             } label: {
@@ -170,22 +199,35 @@ struct LayerRow: View {
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(layer.name).foregroundStyle(Theme.ink)
-                if layer.isReference {
-                    Text("Reference").font(.caption2).foregroundStyle(Theme.secondary)
+                TextField("Layer", text: Binding(
+                    get: { layer.name },
+                    set: { vm.renameLayer(at: index, to: $0) }))
+                    .foregroundStyle(Theme.ink)
+                HStack(spacing: 6) {
+                    if let g = layer.groupName {
+                        Label(g, systemImage: "folder").font(.caption2).foregroundStyle(Theme.secondary)
+                    }
+                    if layer.isReference {
+                        Text("Reference").font(.caption2).foregroundStyle(Theme.secondary)
+                    }
                 }
             }
-            Spacer()
+
             if index == vm.activeIndex {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.primary)
             }
-            Button {
-                vm.document.layers[index].isLocked.toggle()
+            Menu {
+                Button { vm.setActiveLayer(index) } label: { Label("Select", systemImage: "hand.tap") }
+                Button(action: onGroup) { Label("Move to Group…", systemImage: "folder.badge.plus") }
+                if layer.groupName != nil {
+                    Button { vm.setGroup(at: index, to: nil) } label: { Label("Ungroup", systemImage: "folder.badge.minus") }
+                }
+                Button { vm.document.layers[index].isLocked.toggle() } label: {
+                    Label(layer.isLocked ? "Unlock" : "Lock", systemImage: layer.isLocked ? "lock.open" : "lock")
+                }
             } label: {
-                Image(systemName: layer.isLocked ? "lock.fill" : "lock.open")
-                    .foregroundStyle(Theme.mutedInk)
+                Image(systemName: "ellipsis.circle").foregroundStyle(Theme.mutedInk)
             }
-            .buttonStyle(.plain)
         }
         .contentShape(Rectangle())
         .onTapGesture { vm.setActiveLayer(index) }

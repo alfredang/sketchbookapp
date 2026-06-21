@@ -2,7 +2,7 @@ import SwiftUI
 import PencilKit
 
 enum ToolMode: String, CaseIterable, Identifiable {
-    case draw, erase, fill
+    case draw, erase, fill, lasso
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
     var systemImage: String {
@@ -10,6 +10,7 @@ enum ToolMode: String, CaseIterable, Identifiable {
         case .draw: return "paintbrush.pointed"
         case .erase: return "eraser"
         case .fill: return "drop.fill"
+        case .lasso: return "lasso"
         }
     }
 }
@@ -20,11 +21,14 @@ final class EditorViewModel: ObservableObject {
     @Published var brush: BrushType = .pen
     @Published var color: Color = .black
     @Published var width: CGFloat = 5
+    @Published var eraseWidth: CGFloat = 24
     @Published var toolMode: ToolMode = .draw
     @Published var isRulerActive = false
     @Published var symmetry: SymmetryMode = .off
+    @Published var perspective: PerspectiveGuide = .off
     /// Palm rejection: when true, only Apple Pencil input draws (finger/palm ignored).
-    @Published var pencilOnly = false
+    /// Driven by the "Finger Drawing" setting (off → pencil-only → palm rejected).
+    @Published var pencilOnly = true
     @Published var referenceOpacity: Double = 0.5
     @Published var lastSavedAt: Date?
 
@@ -32,14 +36,26 @@ final class EditorViewModel: ObservableObject {
 
     init(document: SketchDocument) {
         self.document = document
-        // Apply saved drawing defaults (Settings).
+        // Apply saved defaults (Settings).
         let defaults = UserDefaults.standard
         if let raw = defaults.string(forKey: SettingsKey.defaultBrush),
            let b = BrushType(rawValue: raw) {
             self.brush = b
         }
-        self.pencilOnly = defaults.bool(forKey: SettingsKey.defaultPencilOnly)
+        // Finger drawing off (default) ⇒ pencil-only ⇒ palm rejected.
+        let fingerDrawing = defaults.object(forKey: SettingsKey.fingerDrawing) as? Bool ?? false
+        self.pencilOnly = !fingerDrawing
+        if let e = defaults.object(forKey: SettingsKey.defaultEraseSize) as? Double, e > 0 {
+            self.eraseWidth = CGFloat(e)
+        }
         self.width = brush.defaultWidth
+        // If the default brush is the pencil, apply the saved grade.
+        if brush == .pencil, let g = defaults.string(forKey: SettingsKey.defaultPencilGrade),
+           let grade = PencilGrade(rawValue: g) {
+            self.pencilGrade = grade
+            self.width = grade.width
+            self.color = grade.color
+        }
     }
 
     /// Inject the environment store after init (StateObject can't read environment in init).
@@ -73,7 +89,11 @@ final class EditorViewModel: ObservableObject {
         case .draw:
             return brush.tool(color: UIColor(color), width: width)
         case .erase:
-            return PKEraserTool(.bitmap)
+            return PKEraserTool(.bitmap, width: eraseWidth)
+        case .lasso:
+            // PencilKit's lasso selects strokes and shows its own edit menu
+            // (cut / copy / duplicate / move).
+            return PKLassoTool()
         case .fill:
             // Fill uses a tap gesture, not a PencilKit tool; keep a no-op pen.
             return brush.tool(color: UIColor(color), width: width)
@@ -88,6 +108,7 @@ final class EditorViewModel: ObservableObject {
         width = b.defaultWidth
         pencilGrade = nil
         toolMode = .draw
+        Haptics.select()
     }
 
     /// Select a graphite pencil grade — sets the pencil ink with grade darkness + width.
@@ -97,6 +118,7 @@ final class EditorViewModel: ObservableObject {
         color = grade.color
         pencilGrade = grade
         toolMode = .draw
+        Haptics.select()
     }
 
     // MARK: - Layers
@@ -129,6 +151,32 @@ final class EditorViewModel: ObservableObject {
     func setActiveLayer(_ index: Int) {
         guard document.layers.indices.contains(index) else { return }
         document.activeLayerIndex = index
+    }
+
+    func renameLayer(at index: Int, to name: String) {
+        guard document.layers.indices.contains(index) else { return }
+        document.layers[index].name = name
+    }
+
+    /// Distinct group names currently in use.
+    var groupNames: [String] {
+        var seen = [String]()
+        for l in document.layers { if let g = l.groupName, !seen.contains(g) { seen.append(g) } }
+        return seen
+    }
+
+    func setGroup(at index: Int, to name: String?) {
+        guard document.layers.indices.contains(index) else { return }
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        document.layers[index].groupName = (trimmed?.isEmpty ?? true) ? nil : trimmed
+    }
+
+    /// Toggle visibility for every layer in a group at once.
+    func toggleGroupVisibility(_ group: String) {
+        let anyVisible = document.layers.contains { $0.groupName == group && $0.isVisible }
+        for i in document.layers.indices where document.layers[i].groupName == group {
+            document.layers[i].isVisible = !anyVisible
+        }
     }
 
     // MARK: - Color fill

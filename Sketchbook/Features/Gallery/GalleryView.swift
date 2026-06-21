@@ -9,6 +9,14 @@ struct GalleryView: View {
 
     private let columns = [GridItem(.adaptive(minimum: 200), spacing: 20)]
 
+    /// Favorites first, then most-recently modified.
+    private var sortedDocuments: [SketchDocument] {
+        store.documents.sorted {
+            if $0.isFavorite != $1.isFavorite { return $0.isFavorite }
+            return $0.modifiedAt > $1.modifiedAt
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -16,11 +24,15 @@ struct GalleryView: View {
                     emptyState
                 } else {
                     LazyVGrid(columns: columns, spacing: 20) {
-                        ForEach(store.documents) { doc in
-                            SketchCell(document: doc)
+                        ForEach(sortedDocuments) { doc in
+                            SketchCell(document: doc) { store.toggleFavorite(doc) }
                                 .onTapGesture { openSketch = doc }
                                 .contextMenu {
                                     Button { openSketch = doc } label: { Label("Open", systemImage: "pencil") }
+                                    Button { store.toggleFavorite(doc) } label: {
+                                        Label(doc.isFavorite ? "Unfavorite" : "Favorite",
+                                              systemImage: doc.isFavorite ? "star.slash" : "star")
+                                    }
                                     Button { store.duplicate(doc) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                                     Button(role: .destructive) { store.delete(doc) } label: { Label("Delete", systemImage: "trash") }
                                 }
@@ -85,20 +97,32 @@ struct GalleryView: View {
 
 struct SketchCell: View {
     let document: SketchDocument
+    var onToggleFavorite: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.surface)
-                if let thumb = document.thumbnail {
-                    Image(uiImage: thumb).resizable().scaledToFit().padding(8)
-                } else {
-                    Image(systemName: "photo").font(.largeTitle).foregroundStyle(Theme.mutedInk)
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.surface)
+                    if let thumb = document.thumbnail {
+                        Image(uiImage: thumb).resizable().scaledToFit().padding(8)
+                    } else {
+                        Image(systemName: "photo").font(.largeTitle).foregroundStyle(Theme.mutedInk)
+                    }
                 }
+                .frame(height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.black.opacity(0.06)))
+
+                Button(action: onToggleFavorite) {
+                    Image(systemName: document.isFavorite ? "star.fill" : "star")
+                        .font(.subheadline)
+                        .foregroundStyle(document.isFavorite ? Theme.highlight : .white)
+                        .padding(7)
+                        .background(.black.opacity(0.28), in: Circle())
+                }
+                .padding(8)
             }
-            .frame(height: 150)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.black.opacity(0.06)))
 
             Text(document.title).font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.ink).lineLimit(1)
