@@ -8,11 +8,19 @@ struct BrushPanel: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
+                    Text("SIZE").font(.caption.weight(.semibold)).foregroundStyle(Theme.mutedInk)
+                    HStack(spacing: 12) {
+                        Slider(value: $vm.width, in: 1...60)
+                        Text("\(Int(vm.width)) pt").font(.subheadline.monospacedDigit())
+                            .foregroundStyle(Theme.ink).frame(width: 52, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
                     Text("BRUSHES").font(.caption.weight(.semibold)).foregroundStyle(Theme.mutedInk)
                     ForEach(BrushType.allCases.filter { $0 != .pencil }) { brush in
                         Button {
                             vm.selectBrush(brush)
-                            dismiss()
                         } label: {
                             HStack(spacing: 14) {
                                 Image(systemName: brush.systemImage)
@@ -37,7 +45,6 @@ struct BrushPanel: View {
                     ForEach(PencilGrade.allCases) { grade in
                         Button {
                             vm.selectPencilGrade(grade)
-                            dismiss()
                         } label: {
                             HStack(spacing: 14) {
                                 Image(systemName: "pencil")
@@ -62,6 +69,9 @@ struct BrushPanel: View {
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle("Brushes")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
         }
     }
 
