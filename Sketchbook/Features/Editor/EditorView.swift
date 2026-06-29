@@ -10,30 +10,64 @@ struct EditorView: View {
     @State private var showLayers = false
     @State private var showBrushes = false
     @State private var showWidth = false
+    @State private var showPhotoPicker = false
     @State private var photoItem: PhotosPickerItem?
     @State private var arImage: UIImage?
     @StateObject private var canvasHandle = CanvasHandle()
+    @ObservedObject private var orientation = OrientationManager.shared
+    @Environment(\.horizontalSizeClass) private var hSize
+
+    // Canvas pinch-zoom state.
+    @State private var zoom: CGFloat = 1
+    @State private var baseZoom: CGFloat = 1
+    @State private var zoomAnchor: UnitPoint = .center
+
+    // iPad right-side panel state.
+    @State private var sidePanelTab: SidePanelTab = .brush
+    @State private var sidePanelCollapsed = false
+
+    // Confirmation for destructive "all pages" actions.
+    private enum PageConfirm { case clearAll, deleteAll }
+    @State private var confirm: PageConfirm?
+
+    /// True on iPad / regular width, where the docked side panel is shown.
+    private var isRegular: Bool { hSize == .regular }
 
     init(document: SketchDocument) {
         _vm = StateObject(wrappedValue: EditorViewModel(document: document))
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            Divider()
-            canvasArea
-                .background(Theme.background)
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                topBar
+                Divider()
+                canvasArea
+                    .background(Theme.background)
+                    .overlay(alignment: .bottom) { pageControl }
+            }
+            // iPad: docked, collapsible, tabbed inspector on the right.
+            if isRegular {
+                if sidePanelCollapsed {
+                    expandPanelButton
+                } else {
+                    EditorSidePanel(vm: vm, tab: $sidePanelTab) {
+                        withAnimation(.easeInOut(duration: 0.22)) { sidePanelCollapsed = true }
+                    }
+                    .transition(.move(edge: .trailing))
+                }
+            }
         }
         .background(Theme.background.ignoresSafeArea())
         .onAppear { vm.attach(store: store) }
-        .onDisappear { vm.save() }
+        .onDisappear { vm.save(); orientation.unlock() }
         .sheet(isPresented: $showLayers) {
             LayersPanel(vm: vm).presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showBrushes) {
-            BrushPanel(vm: vm).presentationDetents([.height(320)])
+            BrushPanel(vm: vm).presentationDetents([.medium, .large])
         }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task {
@@ -49,90 +83,240 @@ struct EditorView: View {
         }
     }
 
+    /// Thin affordance shown on the right edge when the iPad panel is collapsed.
+    private var expandPanelButton: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.22)) { sidePanelCollapsed = false }
+        } label: {
+            Image(systemName: "sidebar.right")
+                .font(.title3)
+                .foregroundStyle(Theme.ink)
+                .frame(width: 44)
+                .frame(maxHeight: .infinity)
+                .background(Theme.surface)
+        }
+        .help("Show panel")
+        .accessibilityLabel("Show panel")
+        .overlay(Divider(), alignment: .leading)
+    }
+
+    /// Bottom page navigator: flip between pages, add, or delete. Mirrors the
+    /// two-finger swipe gesture (swipe up = next/new page, down = previous).
+    private var pageControl: some View {
+        HStack(spacing: 14) {
+            Button { vm.previousPage() } label: {
+                Image(systemName: "chevron.up")
+            }
+            .disabled(vm.currentPage == 0)
+            .accessibilityIdentifier("prevPage")
+            .accessibilityLabel("Previous page")
+
+            Text("Page \(vm.currentPage + 1) / \(vm.pageCount)")
+                .font(.subheadline.weight(.medium).monospacedDigit())
+                .foregroundStyle(Theme.ink)
+                .frame(minWidth: 92)
+                .accessibilityIdentifier("pageIndicator")
+
+            Button { vm.nextPage() } label: {
+                Image(systemName: "chevron.down")
+            }
+            .disabled(vm.currentPage == vm.pageCount - 1)
+            .accessibilityIdentifier("nextPage")
+            .accessibilityLabel("Next page")
+
+            Divider().frame(height: 18)
+            pagesMenu
+        }
+        .font(.title3)
+        .tint(Theme.primary)
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Theme.ink.opacity(0.08), lineWidth: 1))
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+        .padding(.bottom, 14)
+    }
+
+    /// Page management: add before/after, clear, delete. Destructive actions
+    /// for "all" are confirmed before running.
+    private var pagesMenu: some View {
+        Menu {
+            Button { vm.addPageBefore() } label: { Label("Add Page Before", systemImage: "arrow.up.to.line") }
+            Button { vm.addPageAfter() } label: { Label("Add Page After", systemImage: "arrow.down.to.line") }
+            Divider()
+            Button { vm.clearCurrentPage() } label: { Label("Clear Current Page", systemImage: "eraser") }
+            Button { confirm = .clearAll } label: { Label("Clear All Pages", systemImage: "eraser.line.dashed") }
+            Divider()
+            Button(role: .destructive) { vm.deleteCurrentPage() } label: {
+                Label("Delete Current Page", systemImage: "trash")
+            }
+            Button(role: .destructive) { confirm = .deleteAll } label: {
+                Label("Delete All Pages", systemImage: "trash.slash")
+            }
+        } label: {
+            Image(systemName: "square.stack.3d.up")
+        }
+        .accessibilityIdentifier("pagesMenu")
+        .accessibilityLabel("Pages")
+        .confirmationDialog("This affects every page in the sketchbook.",
+                            isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
+                            titleVisibility: .visible) {
+            switch confirm {
+            case .clearAll:
+                Button("Clear All Pages", role: .destructive) { vm.clearAllPages() }
+            case .deleteAll:
+                Button("Delete All Pages", role: .destructive) { vm.deleteAllPages() }
+            case nil:
+                EmptyView()
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    /// Open the iPad panel to a tab, or fall back to a sheet on iPhone.
+    private func openPicker(_ tab: SidePanelTab, sheet: () -> Void) {
+        if isRegular {
+            sidePanelTab = tab
+            withAnimation(.easeInOut(duration: 0.22)) { sidePanelCollapsed = false }
+        } else {
+            sheet()
+        }
+    }
+
     // MARK: - Top toolbar
 
     private var topBar: some View {
-        HStack(spacing: 14) {
-            Button { vm.save(); dismiss() } label: {
-                Image(systemName: "chevron.left").font(.headline)
-            }
+        HStack(spacing: 6) {
+            // Leading — pinned. Always reachable, never clipped.
+            iconButton("chevron.left", label: "Back") { vm.save(); dismiss() }
 
-            Divider().frame(height: 24)
+            Divider().frame(height: 28)
 
-            // Brush (draw) — shows the current brush and opens the brush picker.
-            Button {
-                vm.toolMode = .draw
-                showBrushes = true
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: vm.brush.systemImage)
-                    Image(systemName: "chevron.down").font(.caption2)
+            // Primary tools live in a horizontally scrollable strip so the bar
+            // can never overflow / clip controls on narrow iPhone screens.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    brushButton
+                    eraserButton
+
+                    ColorPicker("", selection: $vm.color, supportsOpacity: true)
+                        .labelsHidden()
+                        .frame(width: 32, height: 32)
+                        .frame(minWidth: 44, minHeight: 44)
+
+                    iconButton("lineweight", label: "Brush size") { showWidth.toggle() }
+                        .popover(isPresented: $showWidth) { widthPopover }
+
+                    toolButton(.fill)
+                    toolButton(.lasso)
                 }
-                .foregroundStyle(vm.toolMode == .draw ? .white : Theme.ink)
-                .frame(height: 32).padding(.horizontal, 8)
-                .background(vm.toolMode == .draw ? Theme.primary : .clear,
-                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .padding(.horizontal, 2)
             }
-            .help("Brushes")
 
-            // Eraser — tap to select; tap again (when active) to adjust size.
-            Button {
-                if vm.toolMode == .erase { showWidth = true } else { vm.toolMode = .erase; Haptics.select() }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "eraser")
-                    if vm.toolMode == .erase { Image(systemName: "chevron.down").font(.caption2) }
-                }
-                .foregroundStyle(vm.toolMode == .erase ? .white : Theme.ink)
-                .frame(height: 32).padding(.horizontal, 8)
-                .background(vm.toolMode == .erase ? Theme.primary : .clear,
-                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            Divider().frame(height: 28)
+
+            // Trailing — pinned. Undo/redo + layers + overflow stay reachable.
+            iconButton("arrow.uturn.backward", label: "Undo") { canvasHandle.undo() }
+            iconButton("arrow.uturn.forward", label: "Redo") { canvasHandle.redo() }
+            iconButton("square.3.layers.3d", label: "Layers") {
+                openPicker(.layers) { showLayers = true }
             }
-            .help("Eraser")
-
-            toolButton(.fill)
-            toolButton(.lasso)
-
-            ColorPicker("", selection: $vm.color, supportsOpacity: true)
-                .labelsHidden().frame(width: 32)
-
-            Button { showWidth.toggle() } label: { Image(systemName: "lineweight") }
-                .popover(isPresented: $showWidth) { widthPopover }
-
-            Button { canvasHandle.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                .help("Undo")
-            Button { canvasHandle.redo() } label: { Image(systemName: "arrow.uturn.forward") }
-                .help("Redo")
-
-            Divider().frame(height: 24)
-
-            guidesMenu
-
-            PhotosPicker(selection: $photoItem, matching: .images) {
-                Image(systemName: "photo.on.rectangle.angled")
-            }
-            .help("Import reference photo")
-
-            Spacer()
-
-            Button { showLayers = true } label: { Image(systemName: "square.3.layers.3d") }
-            Button { arImage = vm.exportedImage() } label: { Image(systemName: "arkit") }
-            Button { vm.save() } label: { Image(systemName: "icloud.and.arrow.up") }
+            overflowMenu
         }
         .font(.title3)
         .foregroundStyle(Theme.ink)
-        .padding(.horizontal, 16).padding(.vertical, 10)
+        .padding(.horizontal, 12).padding(.vertical, 6)
         .background(Theme.surface)
+    }
+
+    /// A toolbar icon button with a HIG-compliant 44×44 pt tap target.
+    private func iconButton(_ systemName: String, label: String,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
+    // Brush (draw) — shows the current brush and opens the brush picker.
+    private var brushButton: some View {
+        Button {
+            vm.toolMode = .draw
+            openPicker(.brush) { showBrushes = true }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: vm.brush.systemImage)
+                Image(systemName: "chevron.down").font(.caption2)
+            }
+            .foregroundStyle(vm.toolMode == .draw ? .white : Theme.ink)
+            .padding(.horizontal, 10).frame(minWidth: 44, minHeight: 44)
+            .background(vm.toolMode == .draw ? Theme.primary : .clear,
+                        in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        }
+        .help("Brushes")
+        .accessibilityLabel("Brushes")
+    }
+
+    // Eraser — tap to select; tap again (when active) to adjust size.
+    private var eraserButton: some View {
+        Button {
+            if vm.toolMode == .erase { showWidth = true } else { vm.toolMode = .erase; Haptics.select() }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "eraser")
+                if vm.toolMode == .erase { Image(systemName: "chevron.down").font(.caption2) }
+            }
+            .foregroundStyle(vm.toolMode == .erase ? .white : Theme.ink)
+            .padding(.horizontal, 10).frame(minWidth: 44, minHeight: 44)
+            .background(vm.toolMode == .erase ? Theme.primary : .clear,
+                        in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        }
+        .help("Eraser")
+        .accessibilityLabel("Eraser")
     }
 
     private func toolButton(_ mode: ToolMode) -> some View {
         Button { vm.toolMode = mode } label: {
             Image(systemName: mode.systemImage)
                 .foregroundStyle(vm.toolMode == mode ? .white : Theme.ink)
-                .frame(width: 36, height: 32)
+                .frame(minWidth: 44, minHeight: 44)
                 .background(vm.toolMode == mode ? Theme.primary : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         }
+        .accessibilityLabel(mode.title)
+    }
+
+    /// Occasional actions grouped into an overflow menu to keep the bar uncluttered.
+    private var overflowMenu: some View {
+        Menu {
+            guidesMenuContent
+            Divider()
+            Button { vm.setFingerDrawing(!vm.fingerDrawingEnabled) } label: {
+                Label(vm.fingerDrawingEnabled ? "Finger Drawing: On" : "Finger Drawing: Off",
+                      systemImage: vm.fingerDrawingEnabled ? "hand.draw.fill" : "hand.draw")
+            }
+            Button { orientation.toggle() } label: {
+                Label(orientation.isLocked ? "Unlock Orientation" : "Lock Orientation",
+                      systemImage: orientation.isLocked ? "lock.rotation.open" : "lock.rotation")
+            }
+            Button { showPhotoPicker = true } label: {
+                Label("Import Reference Photo", systemImage: "photo.on.rectangle.angled")
+            }
+            Button { arImage = vm.exportedImage() } label: {
+                Label("View in AR", systemImage: "arkit")
+            }
+            Button { vm.save() } label: {
+                Label("Save", systemImage: "icloud.and.arrow.up")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .help("More")
+        .accessibilityLabel("More options")
     }
 
     private var widthPopover: some View {
@@ -148,9 +332,11 @@ struct EditorView: View {
         .padding().frame(width: 260)
     }
 
-    /// Single dropdown grouping rulers, symmetry guides, page templates and filter effects.
-    private var guidesMenu: some View {
-        Menu {
+    /// Rulers, symmetry guides, page templates and filter effects — embedded in
+    /// the overflow menu so the top bar stays uncluttered.
+    @ViewBuilder
+    private var guidesMenuContent: some View {
+        Menu("Guides & Effects") {
             Button {
                 vm.isRulerActive.toggle()
             } label: {
@@ -192,12 +378,7 @@ struct EditorView: View {
                     Button { vm.applyFilter(f) } label: { Text(f.title) }
                 }
             }
-        } label: {
-            let active = vm.isRulerActive || vm.symmetry != .off || vm.perspective != .off
-            Image(systemName: "wand.and.stars")
-                .foregroundStyle(active ? Theme.primary : Theme.ink)
         }
-        .help("Guides & Effects")
     }
 
     // MARK: - Canvas
@@ -242,8 +423,24 @@ struct EditorView: View {
             .clipped()
             .frame(width: geo.size.width, height: geo.size.height)
             .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+            .scaleEffect(zoom, anchor: zoomAnchor)
+            .gesture(magnifyGesture)
+            .onTapGesture(count: 2) {
+                withAnimation(.easeInOut(duration: 0.2)) { zoom = 1; baseZoom = 1 }
+            }
         }
         .padding(16)
+    }
+
+    /// Two-finger pinch to zoom the canvas (1×–5×), anchored at the pinch point.
+    /// Double-tap resets to fit. Single-finger input stays free for drawing.
+    private var magnifyGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                zoomAnchor = value.startAnchor
+                zoom = min(max(baseZoom * value.magnification, 1), 5)
+            }
+            .onEnded { _ in baseZoom = zoom }
     }
 
     @ViewBuilder
@@ -265,7 +462,9 @@ struct EditorView: View {
                            symmetry: vm.symmetry,
                            canvasSize: canvasSize,
                            isLocked: layer.isLocked || vm.toolMode == .fill,
-                           handle: canvasHandle)
+                           handle: canvasHandle,
+                           onSwipeUp: { vm.nextPage() },
+                           onSwipeDown: { vm.previousPage() })
                     .frame(width: displaySize.width, height: displaySize.height)
             }
             .opacity(layer.opacity)

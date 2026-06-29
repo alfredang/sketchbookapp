@@ -67,8 +67,9 @@ final class EditorViewModel: ObservableObject {
            let b = BrushType(rawValue: raw) {
             self.brush = b
         }
-        // Finger drawing off (default) ⇒ pencil-only ⇒ palm rejected.
-        let fingerDrawing = defaults.object(forKey: SettingsKey.fingerDrawing) as? Bool ?? false
+        // Finger drawing on by default so drawing works out of the box (with or
+        // without an Apple Pencil); users can switch to Pencil-only in Settings.
+        let fingerDrawing = defaults.object(forKey: SettingsKey.fingerDrawing) as? Bool ?? true
         self.pencilOnly = !fingerDrawing
         if let e = defaults.object(forKey: SettingsKey.defaultEraseSize) as? Double, e > 0 {
             self.eraseWidth = CGFloat(e)
@@ -144,6 +145,108 @@ final class EditorViewModel: ObservableObject {
         pencilGrade = grade
         toolMode = .draw
         Haptics.select()
+    }
+
+    // MARK: - Finger drawing
+
+    /// Whether finger (touch) input draws. When off, only Apple Pencil draws and
+    /// fingers pan/zoom (palm rejection). Mirrors the Settings default.
+    var fingerDrawingEnabled: Bool { !pencilOnly }
+
+    func setFingerDrawing(_ on: Bool) {
+        pencilOnly = !on
+        UserDefaults.standard.set(on, forKey: SettingsKey.fingerDrawing)
+        Haptics.select()
+    }
+
+    // MARK: - Pages
+
+    var pageCount: Int { document.pages.count }
+    var currentPage: Int { document.currentPageIndex }
+
+    /// Add a new blank page after the current one and switch to it.
+    func addPage() { addPageAfter() }
+
+    /// Insert a blank page immediately before the current page and switch to it.
+    func addPageBefore() {
+        flushActiveDrawing()
+        let insertAt = document.currentPageIndex
+        document.pages.insert(Page(), at: insertAt)
+        document.currentPageIndex = insertAt
+        Haptics.select()
+    }
+
+    /// Insert a blank page immediately after the current page and switch to it.
+    func addPageAfter() {
+        flushActiveDrawing()
+        let insertAt = document.currentPageIndex + 1
+        document.pages.insert(Page(), at: insertAt)
+        document.currentPageIndex = insertAt
+        Haptics.select()
+    }
+
+    func goToPage(_ index: Int) {
+        guard document.pages.indices.contains(index), index != document.currentPageIndex else { return }
+        flushActiveDrawing()
+        document.currentPageIndex = index
+        Haptics.select()
+    }
+
+    /// Next page, or create one when swiping past the last page.
+    func nextPageOrCreate() {
+        if document.currentPageIndex < document.pages.count - 1 {
+            goToPage(document.currentPageIndex + 1)
+        } else {
+            addPage()
+        }
+    }
+
+    func previousPage() {
+        guard document.currentPageIndex > 0 else { return }
+        goToPage(document.currentPageIndex - 1)
+    }
+
+    func deleteCurrentPage() {
+        guard document.pages.count > 1 else { clearCurrentPage(); return }
+        document.pages.remove(at: document.currentPageIndex)
+        document.currentPageIndex = min(document.currentPageIndex, document.pages.count - 1)
+        invalidateLayerImage(nil)
+        Haptics.select()
+    }
+
+    /// Remove every page and start over with a single blank page.
+    func deleteAllPages() {
+        document.pages = [Page()]
+        document.currentPageIndex = 0
+        invalidateLayerImage(nil)
+        Haptics.select()
+    }
+
+    /// Wipe the current page's content back to one blank layer (keeps the page).
+    func clearCurrentPage() {
+        document.pages[document.currentPageIndex] = Page()
+        invalidateLayerImage(nil)
+        Haptics.select()
+    }
+
+    /// Wipe every page's content but keep the page count.
+    func clearAllPages() {
+        for i in document.pages.indices { document.pages[i] = Page() }
+        invalidateLayerImage(nil)
+        Haptics.select()
+    }
+
+    /// Next page without auto-creating (used by the swipe gesture).
+    func nextPage() {
+        guard document.currentPageIndex < document.pages.count - 1 else { return }
+        goToPage(document.currentPageIndex + 1)
+    }
+
+    /// Ensure the latest PencilKit strokes are committed to the model before a
+    /// page switch (the canvas pushes changes asynchronously).
+    private func flushActiveDrawing() {
+        guard document.layers.indices.contains(activeIndex) else { return }
+        invalidateLayerImage(document.layers[activeIndex].id)
     }
 
     // MARK: - Layers

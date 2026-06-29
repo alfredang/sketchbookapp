@@ -31,7 +31,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage(SettingsKey.theme) private var theme = AppTheme.light.rawValue
-    @AppStorage(SettingsKey.fingerDrawing) private var fingerDrawing = false
+    @AppStorage(SettingsKey.fingerDrawing) private var fingerDrawing = true
     @AppStorage(SettingsKey.haptics) private var haptics = true
     @AppStorage(SettingsKey.defaultTemplate) private var defaultTemplate = TemplateKind.blank.rawValue
     @AppStorage(SettingsKey.defaultLandscape) private var defaultLandscape = true

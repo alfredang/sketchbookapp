@@ -1,12 +1,30 @@
 import SwiftUI
 
+/// Sheet wrapper used on iPhone (compact width). The reusable picker content
+/// lives in `BrushPickerContent` so the iPad side panel can embed it too.
 struct BrushPanel: View {
     @ObservedObject var vm: EditorViewModel
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            BrushPickerContent(vm: vm)
+                .background(Theme.background.ignoresSafeArea())
+                .navigationTitle("Brushes")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                }
+        }
+    }
+}
+
+/// The scrollable brush + pencil + size picker, embeddable anywhere.
+struct BrushPickerContent: View {
+    @ObservedObject var vm: EditorViewModel
+
+    var body: some View {
+        ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("SIZE").font(.caption.weight(.semibold)).foregroundStyle(Theme.mutedInk)
                     HStack(spacing: 12) {
@@ -17,26 +35,12 @@ struct BrushPanel: View {
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                    Text("BRUSHES").font(.caption.weight(.semibold)).foregroundStyle(Theme.mutedInk)
-                    ForEach(BrushType.allCases.filter { $0 != .pencil }) { brush in
-                        Button {
-                            vm.selectBrush(brush)
-                        } label: {
-                            HStack(spacing: 14) {
-                                Image(systemName: brush.systemImage)
-                                    .font(.title3).frame(width: 28)
-                                    .foregroundStyle(isSelectedBrush(brush) ? .white : Theme.primary)
-                                Text(brush.title)
-                                    .font(.body.weight(.medium))
-                                    .foregroundStyle(isSelectedBrush(brush) ? .white : Theme.ink)
-                                    .frame(width: 84, alignment: .leading)
-                                BrushStrokePreview(brush: brush, color: vm.color)
-                                    .frame(height: 30).frame(maxWidth: .infinity)
-                                if isSelectedBrush(brush) { Image(systemName: "checkmark").foregroundStyle(.white) }
-                            }
-                            .padding(.horizontal, 14).padding(.vertical, 12)
-                            .background(isSelectedBrush(brush) ? Theme.primary : Theme.surface,
-                                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    ForEach(BrushType.Category.allCases) { category in
+                        Text(category.rawValue.uppercased())
+                            .font(.caption.weight(.semibold)).foregroundStyle(Theme.mutedInk)
+                            .padding(.top, 4)
+                        ForEach(BrushType.allCases.filter { $0.category == category && $0 != .pencil }) { brush in
+                            brushRow(brush)
                         }
                     }
 
@@ -65,13 +69,29 @@ struct BrushPanel: View {
                     }
                 }
                 .padding(16)
+        }
+    }
+
+    @ViewBuilder
+    private func brushRow(_ brush: BrushType) -> some View {
+        Button {
+            vm.selectBrush(brush)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: brush.systemImage)
+                    .font(.title3).frame(width: 28)
+                    .foregroundStyle(isSelectedBrush(brush) ? .white : Theme.primary)
+                Text(brush.title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(isSelectedBrush(brush) ? .white : Theme.ink)
+                    .frame(width: 110, alignment: .leading)
+                BrushStrokePreview(brush: brush, color: vm.color)
+                    .frame(height: 30).frame(maxWidth: .infinity)
+                if isSelectedBrush(brush) { Image(systemName: "checkmark").foregroundStyle(.white) }
             }
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("Brushes")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(isSelectedBrush(brush) ? Theme.primary : Theme.surface,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
 
@@ -112,13 +132,7 @@ struct BrushStrokePreview: View {
                        control1: CGPoint(x: size.width * 0.33, y: midY - size.height * 0.42),
                        control2: CGPoint(x: size.width * 0.66, y: midY + size.height * 0.42))
             let w = min(brush.defaultWidth, 22)
-            var strokeColor = color
-            switch brush {
-            case .pencil, .crayon: strokeColor = color.opacity(0.65)
-            case .marker, .watercolor: strokeColor = color.opacity(0.45)
-            default: break
-            }
-            ctx.stroke(p, with: .color(strokeColor),
+            ctx.stroke(p, with: .color(color.opacity(brush.opacity)),
                        style: StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round))
         }
     }
@@ -126,6 +140,8 @@ struct BrushStrokePreview: View {
 
 struct LayersPanel: View {
     @ObservedObject var vm: EditorViewModel
+    /// When embedded in the iPad side panel we don't take the full title size.
+    var embedded = false
     @Environment(\.dismiss) private var dismiss
     @State private var groupingIndex: Int?
     @State private var newGroupName = ""

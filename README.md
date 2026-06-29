@@ -1,8 +1,8 @@
 # Sketchbook
 
-A natural drawing studio for **iPad** — sketch with pressure-sensitive brushes and Apple Pencil, work in layers, trace reference photos, use symmetry and rulers, fill with color, apply filter effects, and bring your art into the real world with **AR**. Everything syncs to your personal **iCloud**.
+A natural drawing studio for **iPad & iPhone** — sketch with pressure-sensitive brushes and Apple Pencil (or finger), work in **multi-page** sketchbooks and layers, trace reference photos, use symmetry and rulers, fill with color, apply filter effects, and bring your art into the real world with **AR**. Everything syncs to your personal **iCloud**.
 
-![Sketchbook — gallery screen](screenshot.png)
+![Sketchbook — editor with the iPad side panel](screenshot.png)
 
 [![Platform](https://img.shields.io/badge/platform-iPadOS%20%7C%20iOS%2017%2B-blue.svg)](https://www.apple.com/ipados/)
 [![Swift](https://img.shields.io/badge/Swift-5-orange.svg)](https://swift.org)
@@ -15,19 +15,24 @@ A natural drawing studio for **iPad** — sketch with pressure-sensitive brushes
 
 | Feature | How it works |
 |---------|--------------|
-| ✏️ **Brushes** | Pen, Pencil, Marker, Crayon, Fountain, Monoline, Watercolor — with live stroke previews |
+| ✏️ **Brush library** | 19 Procreate-style brushes grouped into **Inking · Sketching · Painting**, each with live stroke previews and characteristic opacity |
 | ✒️ **Pencil grades** | Graphite 2H · H · HB · 2B · 4B · 6B (darkness + width) |
-| 📏 **Adjustable size** | Brush & eraser size sliders; full-spectrum color picker with opacity |
+| 📄 **Multi-page sketchbooks** | Many pages per sketchbook — add before/after, flip with a two-finger swipe, clear or delete current/all pages |
+| 📐 **Canvas presets** | Square, Standard, Wide, A4 & Letter sizes with portrait/landscape and selectable paper colors |
+| 🔍 **Pinch to zoom** | Two-finger pinch (1×–5×) anchored at the pinch point; double-tap to reset |
+| 📱 **iPad side panel** | Collapsible, tabbed inspector (Brushes / Color / Layers) — collapse to focus on the canvas |
+| 📏 **Adjustable size** | Brush & eraser size sliders; full-spectrum color picker with opacity + quick palette |
 | 🪣 **Color fill** | Scanline flood-fill bucket — tap any enclosed region |
 | 🧽 **Eraser** | Bitmap eraser with adjustable size |
 | 🪢 **Lasso** | Select, move, cut & duplicate strokes |
-| ↩️ **Undo / Redo** | Full history via PencilKit's undo manager |
+| ↩️ **Undo / Redo** | Always-visible in the toolbar via PencilKit's undo manager |
 | 🎨 **Filter effects** | Mono, Sepia, Vibrant, Invert, Comic, Soft Blur |
 | 🖌️ **Painting styles** | Oil, Watercolor, Pointillism, Mosaic (Core Image) |
 | 🗂️ **Layers** | Add / duplicate / reorder / lock / hide / rename, per-layer opacity, **groups** |
 | 📐 **Drawing guides** | Ruler, 1/2/3-point **perspective**, isometric & grid overlays |
 | 🔁 **Symmetry guides** | Vertical, Horizontal & 4-way (kaleidoscope) live mirroring |
-| ✍️ **Apple Pencil** | Palm rejection always on; optional finger drawing; haptics |
+| ✍️ **Pencil or finger** | Draw with Apple Pencil or finger; in-editor **finger-drawing toggle** + palm rejection; haptics |
+| 🔒 **Orientation lock** | Pin the current orientation so the canvas won't rotate while you draw |
 | 📄 **Templates** | Blank, **Ring File**, Ruled, Grid, Dot Grid, Isometric, Storyboard, Music Staff |
 | 🖼️ **Learn by tracing** | Import a photo as an adjustable-opacity reference overlay |
 | ⭐ **Favorites** | Star sketches; favorites sort to the top |
@@ -52,7 +57,7 @@ A natural drawing studio for **iPad** — sketch with pressure-sensitive brushes
 Sketchbook/
 ├── App/            SketchbookApp (entry), Info.plist, entitlements
 ├── Theme/          Brand tokens (Theme.swift), color-hex helpers
-├── Models/         SketchDocument, Layer, BrushType, Template
+├── Models/         SketchDocument (multi-page), Page, Layer, BrushType, Template
 ├── Store/          DocumentStore — iCloud + local persistence
 ├── Drawing/        CanvasView (PencilKit), SymmetryEngine, FloodFill,
 │                   FilterEngine, TemplateRenderer, LayerCompositor
@@ -63,10 +68,11 @@ Sketchbook/
     └── About/      About + Feedback tabs (Tertiary Infotech house style)
 ```
 
-Each sketch is a JSON `.sketch` document (layers store serialized `PKDrawing` data + optional raster
-images). The **active** layer is a live `PKCanvasView`; inactive layers are composited to images and
-stacked in z-order. Symmetry mirrors freshly drawn strokes on commit. Color fill rasterises a
-snapshot, flood-fills, and composites the patch onto the active layer.
+Each sketch is a JSON `.sketch` document — a sketchbook of one or more **pages**, each with its own
+layer stack (layers store serialized `PKDrawing` data + optional raster images). The **active** layer
+is a live `PKCanvasView`; inactive layers are composited to images and stacked in z-order. Symmetry
+mirrors freshly drawn strokes on commit. Color fill rasterises a snapshot, flood-fills, and composites
+the patch onto the active layer. Documents written before multi-page support migrate automatically.
 
 ## Getting Started
 
@@ -93,9 +99,9 @@ xcodebuild -project Sketchbook.xcodeproj -scheme Sketchbook \
 
 ## Roadmap
 
-- Undo/redo history surfaced in the toolbar
 - Animated/looping AR placement and export to USDZ
 - Brush studio (custom textures, stabilization, taper)
+- Per-page export (PDF) and page reordering
 - Shared iCloud sketchbooks
 
 ## License

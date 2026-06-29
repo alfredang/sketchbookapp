@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct SketchbookApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = DocumentStore()
 
     var body: some Scene {

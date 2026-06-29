@@ -25,6 +25,9 @@ struct CanvasView: UIViewRepresentable {
     var canvasSize: CGSize
     var isLocked: Bool
     var handle: CanvasHandle?
+    /// Forceful two-finger swipes used to flip / create pages.
+    var onSwipeUp: (() -> Void)?
+    var onSwipeDown: (() -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -32,6 +35,18 @@ struct CanvasView: UIViewRepresentable {
         let canvas = PKCanvasView()
         canvas.delegate = context.coordinator
         handle?.canvas = canvas
+
+        // Two-finger flick up/down → page navigation. Two fingers keeps the
+        // single finger / Pencil free for drawing, and a swipe (not a pinch)
+        // doesn't interfere with pinch-to-zoom.
+        for direction in [UISwipeGestureRecognizer.Direction.up, .down] {
+            let swipe = UISwipeGestureRecognizer(target: context.coordinator,
+                                                 action: #selector(Coordinator.handleSwipe(_:)))
+            swipe.direction = direction
+            swipe.numberOfTouchesRequired = 2
+            swipe.delegate = context.coordinator
+            canvas.addGestureRecognizer(swipe)
+        }
         canvas.drawing = drawing
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
@@ -77,7 +92,7 @@ struct CanvasView: UIViewRepresentable {
         canvas.overrideUserInterfaceStyle = .light
     }
 
-    final class Coordinator: NSObject, PKCanvasViewDelegate {
+    final class Coordinator: NSObject, PKCanvasViewDelegate, UIGestureRecognizerDelegate {
         var parent: CanvasView
         var isApplyingSymmetry = false
         private var lastStrokeCount = 0
@@ -86,6 +101,18 @@ struct CanvasView: UIViewRepresentable {
             self.parent = parent
             self.lastStrokeCount = parent.drawing.strokes.count
         }
+
+        @objc func handleSwipe(_ gr: UISwipeGestureRecognizer) {
+            switch gr.direction {
+            case .up: parent.onSwipeUp?()
+            case .down: parent.onSwipeDown?()
+            default: break
+            }
+        }
+
+        // Allow the page-swipe to coexist with PencilKit's own gestures.
+        func gestureRecognizer(_ g: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             guard !isApplyingSymmetry else { return }
