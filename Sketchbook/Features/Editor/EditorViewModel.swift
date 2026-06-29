@@ -18,9 +18,12 @@ enum ToolMode: String, CaseIterable, Identifiable {
 @MainActor
 final class EditorViewModel: ObservableObject {
     @Published var document: SketchDocument
+    /// Default brush size (nominal slider value, 1...60).
+    static let defaultBrushSize: CGFloat = 20
+
     @Published var brush: BrushType = .pen
     @Published var color: Color = .black
-    @Published var width: CGFloat = 5
+    @Published var width: CGFloat = EditorViewModel.defaultBrushSize
     @Published var eraseWidth: CGFloat = 24
     @Published var toolMode: ToolMode = .draw
     @Published var isRulerActive = false
@@ -38,6 +41,40 @@ final class EditorViewModel: ObservableObject {
     // which caused input latency when switching tools).
     private var templateCache: (TemplateKind, CGFloat, CGFloat, UIImage)?
     private var layerImageCache: [UUID: UIImage] = [:]
+
+    // MARK: - Unified undo/redo (document snapshots)
+    // A single timeline covering ALL content changes — strokes, fills, filter
+    // effects, clears, and page/layer edits — not just PencilKit strokes.
+    @Published private var undoStack: [SketchDocument] = []
+    @Published private var redoStack: [SketchDocument] = []
+    private let maxUndoSteps = 30
+
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
+
+    /// Record the current document state so the next mutation can be undone.
+    /// Call BEFORE applying a change.
+    private func snapshot() {
+        undoStack.append(document)
+        if undoStack.count > maxUndoSteps { undoStack.removeFirst() }
+        redoStack.removeAll()
+    }
+
+    func undo() {
+        guard let prev = undoStack.popLast() else { return }
+        redoStack.append(document)
+        document = prev
+        invalidateLayerImage(nil)
+        Haptics.select()
+    }
+
+    func redo() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(document)
+        document = next
+        invalidateLayerImage(nil)
+        Haptics.select()
+    }
 
     func templateImage(size: CGSize) -> UIImage {
         if let c = templateCache, c.0 == document.template, c.1 == size.width, c.2 == size.height {
@@ -74,7 +111,7 @@ final class EditorViewModel: ObservableObject {
         if let e = defaults.object(forKey: SettingsKey.defaultEraseSize) as? Double, e > 0 {
             self.eraseWidth = CGFloat(e)
         }
-        self.width = brush.defaultWidth
+        self.width = EditorViewModel.defaultBrushSize
         // If the default brush is the pencil, apply the saved grade.
         if brush == .pencil, let g = defaults.string(forKey: SettingsKey.defaultPencilGrade),
            let grade = PencilGrade(rawValue: g) {
@@ -100,6 +137,9 @@ final class EditorViewModel: ObservableObject {
         }
         set {
             guard document.layers.indices.contains(activeIndex) else { return }
+            // Each committed stroke is one undo step.
+            guard document.layers[activeIndex].drawing != newValue else { return }
+            snapshot()
             document.layers[activeIndex].drawing = newValue
         }
     }
@@ -131,7 +171,8 @@ final class EditorViewModel: ObservableObject {
 
     func selectBrush(_ b: BrushType) {
         brush = b
-        width = b.defaultWidth
+        // Keep the current size so it acts as a persistent global default
+        // (starts at `defaultBrushSize`); switching brushes no longer resets it.
         pencilGrade = nil
         toolMode = .draw
         Haptics.select()
@@ -169,6 +210,7 @@ final class EditorViewModel: ObservableObject {
 
     /// Insert a blank page immediately before the current page and switch to it.
     func addPageBefore() {
+        snapshot()
         flushActiveDrawing()
         let insertAt = document.currentPageIndex
         document.pages.insert(Page(), at: insertAt)
@@ -178,6 +220,7 @@ final class EditorViewModel: ObservableObject {
 
     /// Insert a blank page immediately after the current page and switch to it.
     func addPageAfter() {
+        snapshot()
         flushActiveDrawing()
         let insertAt = document.currentPageIndex + 1
         document.pages.insert(Page(), at: insertAt)
@@ -208,6 +251,7 @@ final class EditorViewModel: ObservableObject {
 
     func deleteCurrentPage() {
         guard document.pages.count > 1 else { clearCurrentPage(); return }
+        snapshot()
         document.pages.remove(at: document.currentPageIndex)
         document.currentPageIndex = min(document.currentPageIndex, document.pages.count - 1)
         invalidateLayerImage(nil)
@@ -216,6 +260,7 @@ final class EditorViewModel: ObservableObject {
 
     /// Remove every page and start over with a single blank page.
     func deleteAllPages() {
+        snapshot()
         document.pages = [Page()]
         document.currentPageIndex = 0
         invalidateLayerImage(nil)
@@ -224,6 +269,7 @@ final class EditorViewModel: ObservableObject {
 
     /// Wipe the current page's content back to one blank layer (keeps the page).
     func clearCurrentPage() {
+        snapshot()
         document.pages[document.currentPageIndex] = Page()
         invalidateLayerImage(nil)
         Haptics.select()
@@ -231,6 +277,7 @@ final class EditorViewModel: ObservableObject {
 
     /// Wipe every page's content but keep the page count.
     func clearAllPages() {
+        snapshot()
         for i in document.pages.indices { document.pages[i] = Page() }
         invalidateLayerImage(nil)
         Haptics.select()
@@ -252,6 +299,7 @@ final class EditorViewModel: ObservableObject {
     // MARK: - Layers
 
     func addLayer() {
+        snapshot()
         let layer = Layer(name: "Layer \(document.layers.count + 1)")
         document.layers.append(layer)
         document.activeLayerIndex = document.layers.count - 1
@@ -259,6 +307,7 @@ final class EditorViewModel: ObservableObject {
 
     func duplicateActiveLayer() {
         guard document.layers.indices.contains(activeIndex) else { return }
+        snapshot()
         var copy = document.layers[activeIndex]
         copy.id = UUID()
         copy.name += " copy"
@@ -268,11 +317,13 @@ final class EditorViewModel: ObservableObject {
 
     func deleteLayer(at index: Int) {
         guard document.layers.count > 1, document.layers.indices.contains(index) else { return }
+        snapshot()
         document.layers.remove(at: index)
         document.activeLayerIndex = min(document.activeLayerIndex, document.layers.count - 1)
     }
 
     func moveLayer(from source: IndexSet, to destination: Int) {
+        snapshot()
         document.layers.move(fromOffsets: source, toOffset: destination)
         invalidateLayerImage(nil)
     }
@@ -322,6 +373,7 @@ final class EditorViewModel: ObservableObject {
               !document.layers[activeIndex].isLocked else { return }
         let base = LayerCompositor.composite(document, includeReference: false, scale: 1)
         guard let patch = FloodFill.fill(in: base, at: point, with: UIColor(color)) else { return }
+        snapshot()
         // Composite the filled patch onto the active layer's raster image.
         let size = document.canvasSize
         let merged = UIGraphicsImageRenderer(size: size).image { _ in
@@ -336,6 +388,7 @@ final class EditorViewModel: ObservableObject {
     // MARK: - Reference image (upload + overlay for tracing)
 
     func importReference(_ image: UIImage) {
+        snapshot()
         let layer = Layer(name: "Reference",
                           opacity: referenceOpacity,
                           imageData: image.pngData(),
@@ -355,6 +408,7 @@ final class EditorViewModel: ObservableObject {
 
     func applyFilter(_ filter: SketchFilter) {
         guard filter != .none, document.layers.indices.contains(activeIndex) else { return }
+        snapshot()
         let size = document.canvasSize
         let rendered = LayerCompositor.renderLayer(document.layers[activeIndex], size: size, scale: 1)
         let filtered = FilterEngine.apply(filter, to: rendered)
@@ -366,6 +420,7 @@ final class EditorViewModel: ObservableObject {
     // MARK: - Templates / background
 
     func setTemplate(_ template: TemplateKind) {
+        snapshot()
         document.template = template
         templateCache = nil
     }

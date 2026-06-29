@@ -17,11 +17,6 @@ struct EditorView: View {
     @ObservedObject private var orientation = OrientationManager.shared
     @Environment(\.horizontalSizeClass) private var hSize
 
-    // Canvas pinch-zoom state.
-    @State private var zoom: CGFloat = 1
-    @State private var baseZoom: CGFloat = 1
-    @State private var zoomAnchor: UnitPoint = .center
-
     // iPad right-side panel state.
     @State private var sidePanelTab: SidePanelTab = .brush
     @State private var sidePanelCollapsed = false
@@ -215,8 +210,10 @@ struct EditorView: View {
             Divider().frame(height: 28)
 
             // Trailing — pinned. Undo/redo + layers + overflow stay reachable.
-            iconButton("arrow.uturn.backward", label: "Undo") { canvasHandle.undo() }
-            iconButton("arrow.uturn.forward", label: "Redo") { canvasHandle.redo() }
+            iconButton("arrow.uturn.backward", label: "Undo") { vm.undo() }
+                .disabled(!vm.canUndo)
+            iconButton("arrow.uturn.forward", label: "Redo") { vm.redo() }
+                .disabled(!vm.canRedo)
             iconButton("square.3.layers.3d", label: "Layers") {
                 openPicker(.layers) { showLayers = true }
             }
@@ -423,24 +420,11 @@ struct EditorView: View {
             .clipped()
             .frame(width: geo.size.width, height: geo.size.height)
             .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
-            .scaleEffect(zoom, anchor: zoomAnchor)
-            .gesture(magnifyGesture)
-            .onTapGesture(count: 2) {
-                withAnimation(.easeInOut(duration: 0.2)) { zoom = 1; baseZoom = 1 }
-            }
+            // Double-tap resets pinch-zoom (handled by PencilKit's own scroll
+            // zoom — a SwiftUI .scaleEffect here breaks Pencil/touch drawing).
+            .onTapGesture(count: 2) { canvasHandle.resetZoom() }
         }
         .padding(16)
-    }
-
-    /// Two-finger pinch to zoom the canvas (1×–5×), anchored at the pinch point.
-    /// Double-tap resets to fit. Single-finger input stays free for drawing.
-    private var magnifyGesture: some Gesture {
-        MagnifyGesture()
-            .onChanged { value in
-                zoomAnchor = value.startAnchor
-                zoom = min(max(baseZoom * value.magnification, 1), 5)
-            }
-            .onEnded { _ in baseZoom = zoom }
     }
 
     @ViewBuilder

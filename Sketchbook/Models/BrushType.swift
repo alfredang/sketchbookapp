@@ -151,8 +151,20 @@ enum BrushType: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    func tool(color: UIColor, width: CGFloat) -> PKInkingTool {
-        PKInkingTool(inkType, color: color.multiplyingAlpha(opacity), width: width)
+    /// Nominal range of the on-screen size slider (see BrushPickerContent).
+    static let sizeRange: ClosedRange<CGFloat> = 1...60
+
+    func tool(color: UIColor, width uiWidth: CGFloat) -> PKInkingTool {
+        // Map the slider's nominal size onto THIS ink's valid width range.
+        // PencilKit clamps a width to each ink type's own range internally, so an
+        // ink with a narrow range — e.g. .pencil (Charcoal) caps at 16pt,
+        // .monoline at 4pt — ignores larger slider values and appears not to
+        // respond to size. Mapping lets every brush span its full width range.
+        let valid = inkType.validWidthRange
+        let lo = BrushType.sizeRange.lowerBound, hi = BrushType.sizeRange.upperBound
+        let t = max(0, min(1, (uiWidth - lo) / (hi - lo)))
+        let mapped = valid.lowerBound + t * (valid.upperBound - valid.lowerBound)
+        return PKInkingTool(inkType, color: color.multiplyingAlpha(opacity), width: mapped)
     }
 }
 

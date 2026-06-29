@@ -99,7 +99,11 @@ final class ScreenshotUITests: XCTestCase {
     private func drawStroke(_ app: XCUIApplication, from: CGVector, to: CGVector) {
         let a = app.coordinate(withNormalizedOffset: from)
         let b = app.coordinate(withNormalizedOffset: to)
-        a.press(forDuration: 0.08, thenDragTo: b)
+        // Slow drag so the stroke spans many run-loops — this reproduces the
+        // real device condition where the binding round-trip can cancel a live
+        // stroke (a fast/atomic drag finishes in one run-loop and hides the bug).
+        a.press(forDuration: 0.2, thenDragTo: b, withVelocity: 120,
+                thenHoldForDuration: 0.2)
     }
 
     private func snapshot(_ name: String) {
